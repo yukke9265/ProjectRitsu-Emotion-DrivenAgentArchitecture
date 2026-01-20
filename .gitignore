@@ -1,0 +1,26 @@
+# Exclude large models directory
+models/
+
+# Exclude llama.cpp directory
+external/llama.cpp/
+
+# Exclude build artifacts
+LLMapp/x64/
+LLMapp/LLMapp/x64/
+external/llama.cpp/build/
+external/llama.cpp/build-*/
+
+# Exclude IDE and system files
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln.docstates
+.DS_Store
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
