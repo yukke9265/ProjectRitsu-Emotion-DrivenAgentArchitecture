@@ -1,4 +1,5 @@
 ﻿#include "EmotionalAgent.h"
+#include "Config.h"
 #include <algorithm> // 追加
 #include <iostream>
 
@@ -30,15 +31,21 @@ bool EmotionalAgent::initialize() {
     // LLMの初期化
     llm_inference_ = std::make_unique<LLMInference>(
         model_path_,
-        99,    // GPU layers
-        8192,  // context size
-        -1     // n_predict (unlimited)
+        DEFAULT_GPU_LAYERS,
+        DEFAULT_CONTEXT_SIZE,
+        DEFAULT_N_PREDICT
     );
 
     if (!llm_inference_->initialize()) {
         last_error_ = "LLM初期化失敗: " + llm_inference_->get_last_error();
         return false;
     }
+
+    // InputAnalyzerにLLMインスタンスを共有（シングルLLMインスタンス）
+    input_analyzer_->set_llm_inference(llm_inference_.get());
+    
+    // LLMベースの分析モードを有効化（ハイブリッドモード）
+    input_analyzer_->enable_llm_mode(true);
 
     initialized_ = true;
     return true;

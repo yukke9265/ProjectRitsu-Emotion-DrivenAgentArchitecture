@@ -26,6 +26,12 @@ public:
     // 推論実行：プロンプトを受け取って結果を返す
     std::string infer(const std::string& prompt);
 
+    // 単発推論：推論後に自動的にKVキャッシュをクリア（テストや独立した推論に最適）
+    std::string infer_stateless(const std::string& prompt);
+
+    // KVキャッシュをクリア（メモリを解放して次の推論に備える）
+    void clear_kv_cache();
+
     // 内部状態の確認
     bool is_initialized() const { return initialized_; }
 

@@ -1,5 +1,6 @@
 ﻿#include "LLMInference.h"
 #include "DialogFunctions.h"
+#include "Config.h"
 #include <iostream>
 #include <string>
 
@@ -9,10 +10,10 @@ int main(int /*argc*/, char** /*argv*/) {
 
     // LLMの作成と初期化
     LLMInference llm(
-        "D:/0_OllamaModels/WS/models/LFM2.5-1.2B-Instruct-BF16.gguf",
-        99,    // GPU layers
-        8192,  // context size
-        -1     // n_predict
+        DEFAULT_MODEL_PATH,
+        DEFAULT_GPU_LAYERS,
+        DEFAULT_CONTEXT_SIZE,
+        DEFAULT_N_PREDICT
     );
 
     if (!create_and_initialize_llm(llm)) {

@@ -3,6 +3,9 @@
 #include <string>
 #include <vector>
 
+// 前方宣言
+class LLMInference;
+
 /**
  * @brief ユーザー発言の構造化データ
  */
@@ -26,6 +29,24 @@ class InputAnalyzer {
 public:
     InputAnalyzer();
     ~InputAnalyzer();
+
+    /**
+     * @brief LLMインスタンスを設定（EmotionalAgentから共有）
+     * @param llm LLMInferenceへのポインタ
+     */
+    void set_llm_inference(LLMInference* llm);
+
+    /**
+     * @brief LLMベースの分析モードを切り替え
+     * @param enable trueでLLMモード有効、falseでキーワードベースのみ
+     */
+    void enable_llm_mode(bool enable);
+
+    /**
+     * @brief LLMモードの状態を取得
+     * @return LLMモードが有効ならtrue
+     */
+    bool is_llm_mode_enabled() const { return use_llm_; }
 
     /**
      * @brief ユーザー発言を構造化データに変換
@@ -69,6 +90,41 @@ private:
     std::vector<std::string> praise_keywords_;
     std::vector<std::string> criticism_keywords_;
 
+    // LLM関連
+    LLMInference* llm_inference_;  // LLMインスタンス（所有権なし）
+    bool use_llm_;                  // LLMモードのフラグ
+
     void initialize_dictionaries();
     std::string extract_topic(const std::string& text);
+
+    // LLMベースの分析メソッド
+    /**
+     * @brief LLMを使用した入力分析
+     * @param user_input ユーザーの発言
+     * @return 構造化された入力データ
+     */
+    AnalyzedInput analyze_with_llm(const std::string& user_input);
+
+    /**
+     * @brief キーワードベースの分析（従来方式）
+     * @param user_input ユーザーの発言
+     * @return 構造化された入力データ
+     */
+    AnalyzedInput analyze_with_keywords(const std::string& user_input);
+
+    /**
+     * @brief LLM分析用のプロンプトを生成
+     * @param user_input ユーザーの発言
+     * @return 分析用プロンプト
+     */
+    std::string create_analysis_prompt(const std::string& user_input);
+
+    /**
+     * @brief LLMの応答をパースして構造化データに変換
+     * @param llm_output LLMからの応答
+     * @param raw_text 元のユーザー発言
+     * @return 構造化された入力データ
+     */
+    AnalyzedInput parse_llm_response(const std::string& llm_output, 
+                                     const std::string& raw_text);
 };

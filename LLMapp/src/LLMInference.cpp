@@ -165,6 +165,31 @@ static std::string cleanup_output(const std::string& raw_output) {
     return result;
 }
 
+std::string LLMInference::infer_stateless(const std::string& prompt) {
+    // 通常の推論を実行
+    std::string result = infer(prompt);
+    
+    // KVキャッシュをクリアして次の推論に備える
+    clear_kv_cache();
+    
+    return result;
+}
+
+void LLMInference::clear_kv_cache() {
+    if (!initialized_ || !ctx_) {
+        return;
+    }
+    
+    // KVキャッシュをクリア（新しいメモリAPI使用）
+    llama_memory_t mem = llama_get_memory(ctx_);
+    llama_memory_clear(mem, true);  // data=true でデータバッファもクリア
+    
+    // サンプラーもリセット
+    if (sampler_) {
+        common_sampler_reset(sampler_);
+    }
+}
+
 void LLMInference::cleanup() {
     if (sampler_) {
         common_sampler_free(sampler_);
