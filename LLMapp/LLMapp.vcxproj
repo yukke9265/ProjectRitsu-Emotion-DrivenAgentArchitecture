@@ -148,15 +148,33 @@
     <ClCompile Include="..\external\llama.cpp\common\common.cpp" />
     <ClCompile Include="..\external\llama.cpp\common\log.cpp" />
     <ClCompile Include="..\external\llama.cpp\common\sampling.cpp" />
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="main.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="main_emotional.cpp" />
+    <ClCompile Include="src\DialogFunctions.cpp" />
+    <ClCompile Include="src\EmotionalAgent.cpp" />
+    <ClCompile Include="src\EmotionEngine.cpp" />
+    <ClCompile Include="src\InputAnalyzer.cpp" />
     <ClCompile Include="src\LLMInference.cpp" />
+    <ClCompile Include="src\MemoryController.cpp" />
     <ClCompile Include="src\PromptManager.cpp" />
+    <ClCompile Include="src\PromptOrchestrator.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\external\llama.cpp\common\common.h" />
     <ClInclude Include="..\external\llama.cpp\common\sampling.h" />
+    <ClInclude Include="src\DialogFunctions.h" />
+    <ClInclude Include="src\EmotionalAgent.h" />
+    <ClInclude Include="src\EmotionEngine.h" />
+    <ClInclude Include="src\InputAnalyzer.h" />
     <ClInclude Include="src\LLMInference.h" />
+    <ClInclude Include="src\MemoryController.h" />
     <ClInclude Include="src\PromptManager.h" />
+    <ClInclude Include="src\PromptOrchestrator.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

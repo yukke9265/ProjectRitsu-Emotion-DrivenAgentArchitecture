@@ -1,0 +1,71 @@
+﻿2026/02/11 21:37:59 にビルドを開始しました。
+
+ノード 1 上のプロジェクト "D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj" (既定のターゲット)。
+PrepareForBuild:
+  構造化出力が有効になっています。コンパイラ診断の書式設定にはエラー階層が反映されます。詳細については、https://aka.ms/cpp/structured-output を参照してください。
+InitializeBuildStatus:
+  "LLMapp\x64\Release\LLMapp.tlog\unsuccessfulbuild" のタッチ タスクを実行しています。
+ClCompile:
+  C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\HostX86\x64\CL.exe /c /ID:\0_OllamaModels\WS\external\llama.cpp\common /ID:\0_OllamaModels\WS\external\llama.cpp\ggml\include /ID:\0_OllamaModels\WS\external\llama.cpp\examples /ID:\0_OllamaModels\WS\external\llama.cpp\include /ID:\0_OllamaModels\WS\LLMapp\src /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1\include" /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D _CRT_SECURE_NO_WARNINGS /D _CRT_NONSTDC_NO_WARNINGS /D GGML_USE_CUDA /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++20 /permissive- /Fo"LLMapp\x64\Release\\" /Fd"LLMapp\x64\Release\vc143.pdb" /external:W3 /Gd /TP /FC /errorReport:queue /execution-charset:utf-8 src\MemoryController.cpp
+  MemoryController.cpp
+D:\0_OllamaModels\WS\LLMapp\src\MemoryController.h(1,1): warning C4819: ファイルは、現在のコード ページ (932) で表示できない文字を含んでいます。データの損失を防ぐために、ファイルを Unicode 形式で保存してください。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'src/MemoryController.cpp' をコンパイルしています)
+  
+C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\xmemory(730,14): error C2672: 'std::construct_at': 一致するオーバーロードされた関数が見つかりませんでした。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'src/MemoryController.cpp' をコンパイルしています)
+      C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\xutility(461,16):
+      '_Ty *std::construct_at(_Ty *const ,_Types ...) noexcept(<expr>)' の可能性があります
+          C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\xmemory(730,14):
+          関連する制約が満たされていません
+              C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\xutility(459,50):
+              'Episode::Episode': クラス、構造体、共用体に既定のコンストラクターがありません。
+                  C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\xutility(459,50):
+                  引数リスト '()' を一致させようとしているとき
+      C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\xmemory(730,14):
+      テンプレートインスタンス化コンテキスト (最初に最も古いもの) は
+          D:\0_OllamaModels\WS\LLMapp\src\MemoryController.h(152,26):
+          コンパイル対象の クラス テンプレート インスタンス化 'std::vector<Episode,std::allocator<Episode>>' のリファレンスを確認してください
+          C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\vector(1628,23):
+          クラス テンプレート メンバー関数 'void std::vector<Episode,std::allocator<Episode>>::resize(const unsigned __int64)' のコンパイル中
+              D:\0_OllamaModels\WS\LLMapp\src\MemoryController.cpp(62,33):
+              'MemoryController::add_to_long_term' の 'std::vector<Episode,std::allocator<Episode>>::resize' への最初の参照を参照してください
+          C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\vector(1630,9):
+          コンパイル対象の関数 テンプレート インスタンス化 'void std::vector<Episode,std::allocator<Episode>>::_Resize<std::_Value_init_tag>(const unsigned __int64,const _Ty2 &)' のリファレンスを確認してください
+          with
+          [
+              _Ty2=std::_Value_init_tag
+          ]
+          C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\vector(1618,27):
+          コンパイル対象の関数 テンプレート インスタンス化 'Episode *std::_Uninitialized_value_construct_n<std::allocator<Episode>>(Episode *,unsigned __int64,_Alloc &)' のリファレンスを確認してください
+          with
+          [
+              _Alloc=std::allocator<Episode>
+          ]
+          C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\xmemory(2094,18):
+          コンパイル対象の関数 テンプレート インスタンス化 'void std::_Uninitialized_backout_al<std::allocator<Episode>>::_Emplace_back<>(void)' のリファレンスを確認してください
+          C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\xmemory(1844,35):
+          コンパイル対象の関数 テンプレート インスタンス化 'void std::_Default_allocator_traits<_Alloc>::construct<_Ty,>(_Alloc &,_Objty *const )' のリファレンスを確認してください
+          with
+          [
+              _Alloc=std::allocator<Episode>,
+              _Ty=Episode,
+              _Objty=Episode
+          ]
+  
+プロジェクト "D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj" (既定のターゲット) のビルドが終了しました -- 失敗。
+
+ビルドに失敗しました。
+
+"D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj" (既定のターゲット) (1) ->
+(ClCompile ターゲット) -> 
+  D:\0_OllamaModels\WS\LLMapp\src\MemoryController.h(1,1): warning C4819: ファイルは、現在のコード ページ (932) で表示できない文字を含んでいます。データの損失を防ぐために、ファイルを Unicode 形式で保存してください。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+
+
+"D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj" (既定のターゲット) (1) ->
+(ClCompile ターゲット) -> 
+  C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include\xmemory(730,14): error C2672: 'std::construct_at': 一致するオーバーロードされた関数が見つかりませんでした。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+
+    1 個の警告
+    1 エラー
+
+経過時間 00:00:01.75

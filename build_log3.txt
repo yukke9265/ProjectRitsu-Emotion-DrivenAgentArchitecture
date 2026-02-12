@@ -1,0 +1,141 @@
+﻿2026/02/11 21:39:43 にビルドを開始しました。
+
+ノード 1 上のプロジェクト "D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj" (Rebuild ターゲット)。
+_PrepareForClean:
+  ファイル "LLMapp\x64\Release\LLMapp.tlog\LLMapp.lastbuildstate" を削除しています。
+PrepareForBuild:
+  構造化出力が有効になっています。コンパイラ診断の書式設定にはエラー階層が反映されます。詳細については、https://aka.ms/cpp/structured-output を参照してください。
+InitializeBuildStatus:
+  "LLMapp\x64\Release\LLMapp.tlog\unsuccessfulbuild" のタッチ タスクを実行しています。
+ClCompile:
+  C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\HostX86\x64\CL.exe /c /ID:\0_OllamaModels\WS\external\llama.cpp\common /ID:\0_OllamaModels\WS\external\llama.cpp\ggml\include /ID:\0_OllamaModels\WS\external\llama.cpp\examples /ID:\0_OllamaModels\WS\external\llama.cpp\include /ID:\0_OllamaModels\WS\LLMapp\src /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1\include" /Zi /nologo /W3 /WX- /diagnostics:column /sdl /O2 /Oi /GL /D _CRT_SECURE_NO_WARNINGS /D _CRT_NONSTDC_NO_WARNINGS /D GGML_USE_CUDA /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++20 /permissive- /Fo"LLMapp\x64\Release\\" /Fd"LLMapp\x64\Release\vc143.pdb" /external:W3 /Gd /TP /FC /errorReport:queue /execution-charset:utf-8 "..\external\llama.cpp\build\common\build-info.cpp" ..\external\llama.cpp\common\common.cpp ..\external\llama.cpp\common\log.cpp ..\external\llama.cpp\common\sampling.cpp main_emotional.cpp src\DialogFunctions.cpp src\EmotionalAgent.cpp src\EmotionEngine.cpp src\InputAnalyzer.cpp src\LLMInference.cpp src\MemoryController.cpp src\PromptManager.cpp src\PromptOrchestrator.cpp
+  build-info.cpp
+  common.cpp
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル '../external/llama.cpp/common/common.cpp' をコンパイルしています)
+  
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル '../external/llama.cpp/common/common.cpp' をコンパイルしています)
+  
+  log.cpp
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル '../external/llama.cpp/common/log.cpp' をコンパイルしています)
+  
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル '../external/llama.cpp/common/log.cpp' をコンパイルしています)
+  
+  sampling.cpp
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル '../external/llama.cpp/common/sampling.cpp' をコンパイルしています)
+  
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル '../external/llama.cpp/common/sampling.cpp' をコンパイルしています)
+  
+D:\0_OllamaModels\WS\external\llama.cpp\common\sampling.cpp(254,109): warning C4267: '引数': 'size_t' から 'int32_t' に変換しました。データが失われているかもしれません。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+D:\0_OllamaModels\WS\external\llama.cpp\common\sampling.cpp(526,19): warning C4267: '=': 'size_t' から '_Ty' に変換しました。データが失われているかもしれません。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+D:\0_OllamaModels\WS\external\llama.cpp\common\sampling.cpp(526,19): warning C4267:         with [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+D:\0_OllamaModels\WS\external\llama.cpp\common\sampling.cpp(526,19): warning C4267:         [ [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+D:\0_OllamaModels\WS\external\llama.cpp\common\sampling.cpp(526,19): warning C4267:             _Ty=llama_token [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+D:\0_OllamaModels\WS\external\llama.cpp\common\sampling.cpp(526,19): warning C4267:         ] [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  main_emotional.cpp
+D:\0_OllamaModels\WS\LLMapp\src\MemoryController.h(1,1): warning C4819: ファイルは、現在のコード ページ (932) で表示できない文字を含んでいます。データの損失を防ぐために、ファイルを Unicode 形式で保存してください。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'main_emotional.cpp' をコンパイルしています)
+  
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'main_emotional.cpp' をコンパイルしています)
+  
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'main_emotional.cpp' をコンパイルしています)
+  
+  DialogFunctions.cpp
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'src/DialogFunctions.cpp' をコンパイルしています)
+  
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'src/DialogFunctions.cpp' をコンパイルしています)
+  
+  EmotionalAgent.cpp
+D:\0_OllamaModels\WS\LLMapp\src\MemoryController.h(1,1): warning C4819: ファイルは、現在のコード ページ (932) で表示できない文字を含んでいます。データの損失を防ぐために、ファイルを Unicode 形式で保存してください。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'src/EmotionalAgent.cpp' をコンパイルしています)
+  
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'src/EmotionalAgent.cpp' をコンパイルしています)
+  
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'src/EmotionalAgent.cpp' をコンパイルしています)
+  
+  EmotionEngine.cpp
+  InputAnalyzer.cpp
+  LLMInference.cpp
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'src/LLMInference.cpp' をコンパイルしています)
+  
+D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'src/LLMInference.cpp' をコンパイルしています)
+  
+  MemoryController.cpp
+D:\0_OllamaModels\WS\LLMapp\src\MemoryController.h(1,1): warning C4819: ファイルは、現在のコード ページ (932) で表示できない文字を含んでいます。データの損失を防ぐために、ファイルを Unicode 形式で保存してください。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'src/MemoryController.cpp' をコンパイルしています)
+  
+  PromptManager.cpp
+  PromptOrchestrator.cpp
+D:\0_OllamaModels\WS\LLMapp\src\MemoryController.h(1,1): warning C4819: ファイルは、現在のコード ページ (932) で表示できない文字を含んでいます。データの損失を防ぐために、ファイルを Unicode 形式で保存してください。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  (ソース ファイル 'src/PromptOrchestrator.cpp' をコンパイルしています)
+  
+Link:
+  C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\HostX86\x64\link.exe /ERRORREPORT:QUEUE /OUT:"D:\0_OllamaModels\WS\LLMapp\x64\Release\LLMapp.exe" /NOLOGO /LIBPATH:D:\0_OllamaModels\WS\external\llama.cpp\build\ggml\src\Release /LIBPATH:D:\0_OllamaModels\WS\external\llama.cpp\build\src\Release /LIBPATH:D:\0_OllamaModels\WS\external\llama.cpp\examples /LIBPATH:D:\0_OllamaModels\WS\external\llama.cpp\ggml\include /LIBPATH:D:\0_OllamaModels\WS\external\llama.cpp\include /LIBPATH:"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1\lib\x64" llama.lib ggml.lib cudart.lib "ggml-base.lib" "ggml-cpu.lib" kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib cudart.lib cudadevrt.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:\0_OllamaModels\WS\LLMapp\x64\Release\LLMapp.pdb" /SUBSYSTEM:CONSOLE /OPT:REF /OPT:ICF /LTCG:incremental /LTCGOUT:"LLMapp\x64\Release\LLMapp.iobj" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"D:\0_OllamaModels\WS\LLMapp\x64\Release\LLMapp.lib" /MACHINE:X64 "LLMapp\x64\Release\build-info.obj"
+  LLMapp\x64\Release\common.obj
+  LLMapp\x64\Release\log.obj
+  LLMapp\x64\Release\sampling.obj
+  LLMapp\x64\Release\main_emotional.obj
+  LLMapp\x64\Release\DialogFunctions.obj
+  LLMapp\x64\Release\EmotionalAgent.obj
+  LLMapp\x64\Release\EmotionEngine.obj
+  LLMapp\x64\Release\InputAnalyzer.obj
+  LLMapp\x64\Release\LLMInference.obj
+  LLMapp\x64\Release\MemoryController.obj
+  LLMapp\x64\Release\PromptManager.obj
+  LLMapp\x64\Release\PromptOrchestrator.obj
+  コード生成しています。
+  Previous IPDB not found, fall back to full compilation.
+  All 3300 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  コード生成が終了しました。
+  LLMapp.vcxproj -> D:\0_OllamaModels\WS\LLMapp\x64\Release\LLMapp.exe
+FinalizeBuildStatus:
+  ファイル "LLMapp\x64\Release\LLMapp.tlog\unsuccessfulbuild" を削除しています。
+  "LLMapp\x64\Release\LLMapp.tlog\LLMapp.lastbuildstate" のタッチ タスクを実行しています。
+プロジェクト "D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj" (Rebuild ターゲット) のビルドが完了しました。
+
+ビルドに成功しました。
+
+"D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj" (Rebuild ターゲット) (1) ->
+(ClCompile ターゲット) -> 
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\sampling.cpp(254,109): warning C4267: '引数': 'size_t' から 'int32_t' に変換しました。データが失われているかもしれません。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\sampling.cpp(526,19): warning C4267: '=': 'size_t' から '_Ty' に変換しました。データが失われているかもしれません。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+D:\0_OllamaModels\WS\external\llama.cpp\common\sampling.cpp(526,19): warning C4267:         with [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+D:\0_OllamaModels\WS\external\llama.cpp\common\sampling.cpp(526,19): warning C4267:         [ [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+D:\0_OllamaModels\WS\external\llama.cpp\common\sampling.cpp(526,19): warning C4267:             _Ty=llama_token [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+D:\0_OllamaModels\WS\external\llama.cpp\common\sampling.cpp(526,19): warning C4267:         ] [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\LLMapp\src\MemoryController.h(1,1): warning C4819: ファイルは、現在のコード ページ (932) で表示できない文字を含んでいます。データの損失を防ぐために、ファイルを Unicode 形式で保存してください。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\LLMapp\src\MemoryController.h(1,1): warning C4819: ファイルは、現在のコード ページ (932) で表示できない文字を含んでいます。データの損失を防ぐために、ファイルを Unicode 形式で保存してください。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(295,29): warning C4305: '初期化中': 'double' から 'float' へ切り詰めます。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\external\llama.cpp\common\common.h(305,42): warning C4244: '引数': 'const unsigned int' から 'float' への変換です。データが失われる可能性があります。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\LLMapp\src\MemoryController.h(1,1): warning C4819: ファイルは、現在のコード ページ (932) で表示できない文字を含んでいます。データの損失を防ぐために、ファイルを Unicode 形式で保存してください。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+  D:\0_OllamaModels\WS\LLMapp\src\MemoryController.h(1,1): warning C4819: ファイルは、現在のコード ページ (932) で表示できない文字を含んでいます。データの損失を防ぐために、ファイルを Unicode 形式で保存してください。 [D:\0_OllamaModels\WS\LLMapp\LLMapp.vcxproj]
+
+    20 個の警告
+    0 エラー
+
+経過時間 00:00:13.55
