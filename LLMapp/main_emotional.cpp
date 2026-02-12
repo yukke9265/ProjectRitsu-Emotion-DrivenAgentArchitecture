@@ -7,6 +7,8 @@
 #include <iomanip>
 #include <vector>
 #include <chrono>
+#include <fstream>
+#include <sstream>
 
 // テストケース構造体
 struct TestCase {
@@ -141,6 +143,41 @@ void run_analyzer_test_mode(bool use_llm, const std::string& model_path) {
     if (!use_llm) {
         std::cout << "\n[ヒント] LLMモードでテストする場合:\n";
         std::cout << "  LLMapp.exe --test-analyzer\n";
+    }
+    
+    // 結果をファイルに保存
+    auto now = std::chrono::system_clock::now();
+    auto now_t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_buf;
+    localtime_s(&tm_buf, &now_t);
+    
+    std::ostringstream filename;
+    filename << "test_results_"
+             << std::put_time(&tm_buf, "%Y%m%d_%H%M%S")
+             << (use_llm ? "_llm" : "_keyword")
+             << ".txt";
+    
+    std::ofstream outfile(filename.str());
+    if (outfile.is_open()) {
+        outfile << "========================================\n";
+        outfile << " InputAnalyzer テスト結果\n";
+        outfile << "========================================\n";
+        outfile << "実行日時: " << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S") << "\n";
+        outfile << "モード: " << (use_llm ? "LLM + キーワード (ハイブリッド)" : "キーワードベースのみ") << "\n";
+        outfile << "\n========================================\n";
+        outfile << " サマリー\n";
+        outfile << "========================================\n";
+        outfile << "合計:   " << (passed + failed) << " テスト\n";
+        outfile << "合格:   " << passed << "\n";
+        outfile << "不合格: " << failed << "\n";
+        outfile << "合格率: " << std::fixed << std::setprecision(1) 
+                << (100.0 * passed / (passed + failed)) << "%\n";
+        outfile << "平均処理時間: " << (total_time / test_cases.size()) << "ms\n";
+        outfile.close();
+        
+        std::cout << "\n[保存] テスト結果を " << filename.str() << " に保存しました\n";
+    } else {
+        std::cerr << "\n[エラー] テスト結果ファイルの保存に失敗しました\n";
     }
     
     std::cout << "\n";
