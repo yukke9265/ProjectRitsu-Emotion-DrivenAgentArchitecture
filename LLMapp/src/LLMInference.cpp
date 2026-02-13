@@ -2,6 +2,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cctype>
+#include <sstream>
 
 // 前方宣言
 static std::string cleanup_output(const std::string& raw_output);
@@ -82,19 +83,34 @@ std::string LLMInference::infer(const std::string& prompt) {
 
     try {
         // トークン化
-        std::vector<llama_token> tokens_list = common_tokenize(ctx_, prompt, true);
+        std::vector<llama_token> prompt_tokens = common_tokenize(ctx_, prompt, true);
+
+        // 長文プロンプトは分割デコード（n_batch超過によるASSERT回避）
+        constexpr int kDecodeChunkSize = 256;
+        size_t offset = 0;
+        while (offset < prompt_tokens.size()) {
+            int chunk = static_cast<int>(std::min<size_t>(kDecodeChunkSize, prompt_tokens.size() - offset));
+            if (llama_decode(ctx_, llama_batch_get_one(prompt_tokens.data() + offset, chunk))) {
+                last_error_ = "プロンプトのデコードに失敗しました。";
+                return "";
+            }
+            offset += static_cast<size_t>(chunk);
+        }
 
         // 推論ループ
         std::string result;
         int n_cur = 0;
+        std::vector<llama_token> tokens_list;
 
         while (n_cur < n_predict_ || n_predict_ == -1) {
             // デコード実行
-            if (llama_decode(ctx_, llama_batch_get_one(tokens_list.data(), (int)tokens_list.size()))) {
-                last_error_ = "デコードに失敗しました。";
-                return result;
+            if (!tokens_list.empty()) {
+                if (llama_decode(ctx_, llama_batch_get_one(tokens_list.data(), (int)tokens_list.size()))) {
+                    last_error_ = "デコードに失敗しました。";
+                    return result;
+                }
+                tokens_list.clear();
             }
-            tokens_list.clear();
 
             // トークンサンプリング
             auto id = common_sampler_sample(sampler_, ctx_, -1);
@@ -103,6 +119,16 @@ std::string LLMInference::infer(const std::string& prompt) {
             // トークンを文字列に変換
             std::string token_str = common_token_to_piece(ctx_, id);
             result += token_str;
+
+            // メタ出力パターンが出始めたら早期終了（過剰生成の抑止）
+            if (result.find("\n→") != std::string::npos ||
+                result.find("\n✅") != std::string::npos ||
+                result.find("\n（※") != std::string::npos ||
+                result.find("\nAI:") != std::string::npos ||
+                result.find("\nYou:") != std::string::npos ||
+                result.size() > 1200) {
+                break;
+            }
 
             // 終了判定（EOG: End of Generation）
             if (llama_vocab_is_eog(llama_model_get_vocab(model_), id)) {
@@ -125,6 +151,9 @@ std::string LLMInference::infer(const std::string& prompt) {
 // 制御トークンと不要な文字列をクリーンアップするヘルパー関数
 static std::string cleanup_output(const std::string& raw_output) {
     std::string result = raw_output;
+
+    // 改行コードを統一
+    result.erase(std::remove(result.begin(), result.end(), '\r'), result.end());
 
     // 1. 構造化フォーマットからセリフ部分を抽出
     size_t response_pos = result.find("応答:");
@@ -245,6 +274,69 @@ static std::string cleanup_output(const std::string& raw_output) {
 
     // 7. 末尾の改行と空白を削除
     while (!result.empty() && (result.back() == '\n' || result.back() == '\r' || result.back() == ' ' || result.back() == '\t')) {
+        result.pop_back();
+    }
+
+    // 8. 行ベースのフィルタ（メタ行を除去し、以降を打ち切る）
+    auto ltrim = [](const std::string& s) {
+        size_t i = 0;
+        while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) {
+            ++i;
+        }
+        return s.substr(i);
+    };
+
+    auto starts_with = [](const std::string& s, const std::string& prefix) {
+        return s.size() >= prefix.size() && s.compare(0, prefix.size(), prefix) == 0;
+    };
+
+    auto is_meta_line = [&](const std::string& line) {
+        std::string t = ltrim(line);
+        return starts_with(t, "→") ||
+               starts_with(t, "✅") ||
+               starts_with(t, "（※") ||
+               starts_with(t, "※") ||
+               starts_with(t, "---") ||
+               starts_with(t, "AI:") ||
+               starts_with(t, "You:") ||
+               starts_with(t, "感情状態:") ||
+               starts_with(t, "感情価:") ||
+               starts_with(t, "覚醒度:");
+    };
+
+    std::istringstream iss(result);
+    std::ostringstream oss;
+    std::string line;
+    std::string prev_line;
+    bool has_content = false;
+
+    while (std::getline(iss, line)) {
+        if (is_meta_line(line)) {
+            if (has_content) {
+                break;
+            }
+            continue;
+        }
+
+        if (line == prev_line && !line.empty()) {
+            continue;
+        }
+
+        if (!line.empty()) {
+            has_content = true;
+        }
+
+        if (oss.tellp() > 0) {
+            oss << "\n";
+        }
+        oss << line;
+        prev_line = line;
+    }
+
+    result = oss.str();
+
+    // 9. 最終トリム
+    while (!result.empty() && (result.back() == '\n' || result.back() == ' ' || result.back() == '\t')) {
         result.pop_back();
     }
 

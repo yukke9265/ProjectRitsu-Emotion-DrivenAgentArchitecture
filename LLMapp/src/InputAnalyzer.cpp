@@ -8,6 +8,25 @@
 #include <regex>
 #include <iostream>
 
+namespace {
+bool is_valid_intent(const std::string& intent) {
+    return intent == "praise" || intent == "criticism" || intent == "question" ||
+           intent == "greeting" || intent == "casual";
+}
+
+bool is_valid_evaluation(const std::string& evaluation) {
+    return evaluation == "positive" || evaluation == "neutral" || evaluation == "negative";
+}
+
+bool is_semantically_valid_llm_result(const AnalyzedInput& result) {
+    if (result.topic.empty()) return false;
+    if (!is_valid_intent(result.intent)) return false;
+    if (!is_valid_evaluation(result.evaluation_to_ai)) return false;
+    if (result.sentiment_score < -1.0 || result.sentiment_score > 1.0) return false;
+    return true;
+}
+}
+
 InputAnalyzer::InputAnalyzer() 
     : llm_inference_(nullptr)
     , use_llm_(false)
@@ -120,15 +139,22 @@ AnalyzedInput InputAnalyzer::analyze_with_llm(const std::string& user_input,
         std::cout << "  " << std::string(50, '-') << "\n\n";
     }
     
-    // パース成功まで最大LLM_PARSE_RETRY_COUNT回リトライ
+    // パース成功 + 意味的妥当性チェック成功まで最大LLM_PARSE_RETRY_COUNT回リトライ
     for (int retry = 0; retry < LLM_PARSE_RETRY_COUNT; retry++) {
         try {
             if (debug_mode_ && retry > 0) {
                 std::cout << "  [InputAnalyzer] リトライ " << retry + 1 << "回目\n";
             }
+
+            std::string retry_prompt = prompt;
+            if (retry > 0) {
+                retry_prompt += "\n\n【重要】前回の出力は不完全でした。";
+                retry_prompt += "topic/intent/evaluation_to_ai/sentiment_score を必ず有効値で埋め、";
+                retry_prompt += "JSONオブジェクトのみを1つ返してください。";
+            }
             
             // LLMで単発推論（KVキャッシュは自動クリア）
-            std::string llm_output = llm_inference_->infer_stateless(prompt);
+            std::string llm_output = llm_inference_->infer_stateless(retry_prompt);
             
             if (debug_mode_) {
                 std::cout << "  [InputAnalyzer] LLM応答:\n";
@@ -139,6 +165,11 @@ AnalyzedInput InputAnalyzer::analyze_with_llm(const std::string& user_input,
             
             // LLM応答をパースして構造化データに変換
             AnalyzedInput result = parse_llm_response(llm_output, user_input);
+
+            // JSONとしては解釈できても、空項目や未知ラベルは再生成対象にする
+            if (!is_semantically_valid_llm_result(result)) {
+                throw std::runtime_error("LLM出力はJSON形式だが内容が不完全/不正です");
+            }
             
             // パース成功 - 結果を返す
             if (retry > 0) {
@@ -274,8 +305,18 @@ std::string InputAnalyzer::create_analysis_prompt(const std::string& user_input,
 → {"topic":"スマートポインタの有用性", "intent":"praise", "evaluation_to_ai":"neutral", "keywords":["なるほど","便利","スマートポインタ"], "sentiment_score":0.6}
 ※「それ」=スマートポインタを指す、ポジティブな反応 → praise
 
+【出力の絶対ルール（厳守）】
+1. 出力はJSONオブジェクト1個のみ（先頭は"{"、末尾は"}"）
+2. JSONの前後に文字を一切付けない（前置き・注釈・説明・謝罪・提案を禁止）
+3. Markdown記法を禁止（```json, ```, 箇条書き, 矢印, 絵文字を禁止）
+4. 必須フィールド topic / intent / evaluation_to_ai / keywords / sentiment_score を必ず埋める
+5. intentは praise|criticism|question|greeting|casual のいずれか
+6. evaluation_to_aiは positive|neutral|negative のいずれか
+7. keywords は1件以上の文字列配列
+8. sentiment_score は -1.0 から 1.0 の数値
+
 【出力】
-JSON形式のみを出力してください。説明や追加の文章は不要です。
+JSONオブジェクトのみを出力してください。
 )";
         
     return prompt;
@@ -300,29 +341,32 @@ AnalyzedInput InputAnalyzer::parse_llm_response(
             throw std::runtime_error("JSON形式が見つかりません");
         }
         
-        // 簡易的なJSONパース（正規表現ベース）
+        // 厳格JSONパース（必須項目が欠けたら失敗）
+        bool has_topic = false;
+        bool has_intent = false;
+        bool has_evaluation = false;
+        bool has_sentiment = false;
+        bool has_keywords = false;
+
         // topic の抽出
         std::regex topic_regex(R"xxx("topic"\s*:\s*"([^"]*)")xxx");
         if (std::regex_search(json_str, match, topic_regex) && match.size() > 1) {
             result.topic = match[1].str();
-        } else {
-            result.topic = "general";
+            has_topic = !result.topic.empty();
         }
         
         // intent の抽出
         std::regex intent_regex(R"xxx("intent"\s*:\s*"([^"]*)")xxx");
         if (std::regex_search(json_str, match, intent_regex) && match.size() > 1) {
             result.intent = match[1].str();
-        } else {
-            result.intent = "casual";
+            has_intent = !result.intent.empty();
         }
         
         // evaluation_to_ai の抽出
         std::regex eval_regex(R"xxx("evaluation_to_ai"\s*:\s*"([^"]*)")xxx");
         if (std::regex_search(json_str, match, eval_regex) && match.size() > 1) {
             result.evaluation_to_ai = match[1].str();
-        } else {
-            result.evaluation_to_ai = "neutral";
+            has_evaluation = !result.evaluation_to_ai.empty();
         }
         
         // sentiment_score の抽出
@@ -331,8 +375,7 @@ AnalyzedInput InputAnalyzer::parse_llm_response(
             result.sentiment_score = std::stod(match[1].str());
             // 範囲チェック
             result.sentiment_score = std::max(-1.0, std::min(1.0, result.sentiment_score));
-        } else {
-            result.sentiment_score = 0.0;
+            has_sentiment = true;
         }
         
         // keywords の抽出
@@ -349,11 +392,12 @@ AnalyzedInput InputAnalyzer::parse_llm_response(
                     result.keywords.push_back(keyword_match[1].str());
                 }
             }
+            has_keywords = !result.keywords.empty();
         }
-        
-        // キーワードが抽出できなかった場合のフォールバック
-        if (result.keywords.empty()) {
-            result.keywords = extract_keywords(raw_text);
+
+        // 必須項目の検証（不足時は再生成リトライへ）
+        if (!has_topic || !has_intent || !has_evaluation || !has_sentiment || !has_keywords) {
+            throw std::runtime_error("必須JSONフィールドが不足または空です");
         }
         
     } catch (const std::exception& e) {
