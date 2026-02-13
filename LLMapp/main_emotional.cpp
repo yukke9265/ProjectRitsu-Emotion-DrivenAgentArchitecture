@@ -435,7 +435,10 @@ int main(int argc, char** argv) {
         std::cout.flush();
 
         std::string user_input;
-        std::getline(std::cin, user_input);
+        if (!std::getline(std::cin, user_input)) {
+            std::cout << "\n入力ストリームが終了したため、対話を終了します。\n";
+            break;
+        }
 
         // 空入力のスキップ
         if (user_input.empty()) {
