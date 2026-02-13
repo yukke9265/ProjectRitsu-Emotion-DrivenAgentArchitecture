@@ -7,7 +7,7 @@
 // ===== LLMパラメータ設定 =====
 #define DEFAULT_GPU_LAYERS 99        // GPU レイヤー数（99 = 全て）
 #define DEFAULT_CONTEXT_SIZE 8192    // コンテキストサイズ
-#define DEFAULT_N_PREDICT -1         // 生成トークン数（-1 = 無制限）
+#define DEFAULT_N_PREDICT 256        // 生成トークン数（256 = 簡潔な応答、-1 = 無制限は非推奨）
 
 // ===== テストモード用設定 =====
 #define TEST_CONTEXT_SIZE 2048       // テスト時のコンテキストサイズ（小さめ）

@@ -76,6 +76,18 @@ public:
     void set_constitution(const PersonalityConstitution& constitution);
 
     /**
+     * @brief デバッグモードを有効化/無効化
+     * @param enable trueでデバッグログを出力
+     */
+    void set_debug_mode(bool enable);
+
+    /**
+     * @brief デバッグモードの状態を取得
+     * @return デバッグモードが有効ならtrue
+     */
+    bool is_debug_mode() const { return debug_mode_; }
+
+    /**
      * @brief 会話履歴をクリア
      */
     void clear_history();
@@ -102,6 +114,7 @@ private:
     std::string model_path_;
     bool initialized_;
     std::string last_error_;
+    bool debug_mode_;
 
     /**
      * @brief 記憶の統合を実行（定期的に呼ばれる）

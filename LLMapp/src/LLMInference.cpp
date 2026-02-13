@@ -28,6 +28,10 @@ bool LLMInference::initialize() {
         // バックエンド初期化
         llama_backend_init();
 
+        // サンプリングパラメータの設定（繰り返し防止）
+        params_.sampling.penalty_repeat = 1.15f;  // repeat_penalty（強化）
+        params_.sampling.penalty_last_n = 128;    // 直近128トークンを監視
+
         // モデルと コンテキスト初期化
         llama_init_ = std::shared_ptr<common_init_result>(
             common_init_from_params(params_).release(),
@@ -122,14 +126,96 @@ std::string LLMInference::infer(const std::string& prompt) {
 static std::string cleanup_output(const std::string& raw_output) {
     std::string result = raw_output;
 
-    // <|....|> 形式のすべての制御トークンを削除
+    // 1. 構造化フォーマットからセリフ部分を抽出
+    size_t response_pos = result.find("応答:");
+    if (response_pos != std::string::npos) {
+        result = result.substr(response_pos + 6);  // "応答:" (6バイト) の後ろから
+        
+        // 直後の空白と ":" を削除
+        size_t start = 0;
+        while (start < result.length() && 
+               (result[start] == ' ' || result[start] == '\t' || 
+                result[start] == '\n' || result[start] == '\r' || 
+                result[start] == ':')) {
+            start++;
+        }
+        result = result.substr(start);
+    }
+
+    // 2. 感情状態の数値データを削除
+    // "感情状態:" で始まる行を削除
+    size_t emotion_pos = 0;
+    while ((emotion_pos = result.find("感情状態:", emotion_pos)) != std::string::npos) {
+        // 行の開始位置を探す
+        size_t line_start = emotion_pos;
+        while (line_start > 0 && result[line_start - 1] != '\n') {
+            line_start--;
+        }
+        // 行の終了位置を探す
+        size_t line_end = result.find('\n', emotion_pos);
+        if (line_end == std::string::npos) {
+            line_end = result.length();
+        } else {
+            line_end++; // 改行も含める
+        }
+        result.erase(line_start, line_end - line_start);
+    }
+
+    // "感情価:" "覚醒度:" も削除
+    std::vector<std::string> patterns = {"感情価:", "覚醒度:", "Valence:", "Arousal:"};
+    for (const auto& pattern : patterns) {
+        size_t pos = 0;
+        while ((pos = result.find(pattern, pos)) != std::string::npos) {
+            size_t line_start = pos;
+            while (line_start > 0 && result[line_start - 1] != '\n') {
+                line_start--;
+            }
+            size_t line_end = result.find('\n', pos);
+            if (line_end == std::string::npos) {
+                line_end = result.length();
+            } else {
+                line_end++;
+            }
+            result.erase(line_start, line_end - line_start);
+        }
+    }
+
+    // 3. メタ情報の削除（例、注釈など）
+    // "（例：...）" パターンを削除
+    size_t example_start = 0;
+    while ((example_start = result.find("（例：", example_start)) != std::string::npos) {
+        size_t example_end = result.find("）", example_start);
+        if (example_end != std::string::npos) {
+            result.erase(example_start, example_end - example_start + 3);  // "）" (3バイト)も含む
+        } else {
+            break;
+        }
+    }
+
+    // "（※注：...）" パターンを削除
+    size_t note_start = 0;
+    while ((note_start = result.find("（※", note_start)) != std::string::npos) {
+        size_t note_end = result.find("）", note_start);
+        if (note_end != std::string::npos) {
+            result.erase(note_start, note_end - note_start + 3);
+        } else {
+            break;
+        }
+    }
+
+    // "---" 区切り線以降を削除
+    size_t separator_pos = result.find("---");
+    if (separator_pos != std::string::npos) {
+        result = result.substr(0, separator_pos);
+    }
+
+    // 4. <|....|> 形式のすべての制御トークンを削除
     size_t pos = 0;
     while ((pos = result.find("<|", pos)) != std::string::npos) {
         size_t end_pos = result.find("|>", pos);
         if (end_pos != std::string::npos) {
             result.erase(pos, end_pos - pos + 2);
         } else {
-            // |> が見つからない場合は、< から > までを削除
             size_t close_pos = result.find(">", pos);
             if (close_pos != std::string::npos) {
                 result.erase(pos, close_pos - pos + 1);
@@ -139,7 +225,7 @@ static std::string cleanup_output(const std::string& raw_output) {
         }
     }
 
-    // 残りの < > パターンも削除
+    // 5. 残りの < > パターンも削除
     pos = 0;
     while ((pos = result.find("<", pos)) != std::string::npos) {
         size_t end_pos = result.find(">", pos);
@@ -150,14 +236,14 @@ static std::string cleanup_output(const std::string& raw_output) {
         }
     }
 
-    // 先頭の改行と空白を削除
+    // 6. 先頭の改行と空白を削除
     size_t start = 0;
     while (start < result.length() && (result[start] == '\n' || result[start] == '\r' || result[start] == ' ' || result[start] == '\t')) {
         start++;
     }
     result = result.substr(start);
 
-    // 末尾の改行と空白を削除
+    // 7. 末尾の改行と空白を削除
     while (!result.empty() && (result.back() == '\n' || result.back() == '\r' || result.back() == ' ' || result.back() == '\t')) {
         result.pop_back();
     }

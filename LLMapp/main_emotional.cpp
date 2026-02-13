@@ -1,6 +1,7 @@
 ﻿#include "EmotionalAgent.h"
 #include "DialogFunctions.h"
 #include "InputAnalyzer.h"
+#include "MemoryController.h"
 #include "Config.h"
 #include <iostream>
 #include <string>
@@ -180,31 +181,195 @@ void run_analyzer_test_mode(bool use_llm, const std::string& model_path) {
         std::cerr << "\n[エラー] テスト結果ファイルの保存に失敗しました\n";
     }
     
+    // ===== 会話履歴を含むテスト =====
+    std::cout << "\n";
+    std::cout << "========================================\n";
+    std::cout << " 会話履歴付きテスト\n";
+    std::cout << "========================================\n";
+    std::cout << "文脈を考慮した入力分析のテストを実行します。\n\n";
+    
+    int context_passed = 0;
+    int context_failed = 0;
+    
+    // テストケース1: 指示語の解釈
+    {
+        std::cout << "[テスト1] 指示語の解釈\n";
+        std::deque<ConversationTurn> history;
+        history.push_back(ConversationTurn("user", "Pythonの辞書について教えて"));
+        history.push_back(ConversationTurn("assistant", "Pythonの辞書は、キーと値のペアを格納するデータ構造です。"));
+        history.push_back(ConversationTurn("user", "リストとの違いは？"));
+        history.push_back(ConversationTurn("assistant", "リストは順序付きのコレクションで、辞書はキーでアクセスします。"));
+        
+        std::cout << "  【会話履歴】\n";
+        for (const auto& turn : history) {
+            std::cout << "    " << turn.role << ": " << turn.content << "\n";
+        }
+        
+        std::string test_input = "それはわかった。具体例を教えて";
+        auto result = analyzer.analyze(test_input, &history);
+        
+        std::cout << "  入力: \"" << test_input << "\"\n";
+        std::cout << "  Topic: " << result.topic << " (期待: Pythonの辞書関連)\n";
+        std::cout << "  Intent: " << result.intent << " (期待: question)\n";
+        
+        bool success = (result.intent == "question");
+        std::cout << "  結果: " << (success ? "✓ PASS" : "✗ FAIL") << "\n\n";
+        if (success) context_passed++; else context_failed++;
+    }
+    
+    // テストケース2: 継続的な話題
+    {
+        std::cout << "[テスト2] 継続的な話題\n";
+        std::deque<ConversationTurn> history;
+        history.push_back(ConversationTurn("user", "機械学習について教えて"));
+        history.push_back(ConversationTurn("assistant", "機械学習は、データからパターンを学習する技術です。"));
+        history.push_back(ConversationTurn("user", "もっと詳しく"));
+        history.push_back(ConversationTurn("assistant", "教師あり学習、教師なし学習、強化学習の3種類があります。"));
+        
+        std::cout << "  【会話履歴】\n";
+        for (const auto& turn : history) {
+            std::cout << "    " << turn.role << ": " << turn.content << "\n";
+        }
+        
+        std::string test_input = "わかりやすい！ありがとう";
+        auto result = analyzer.analyze(test_input, &history);
+        
+        std::cout << "  入力: \"" << test_input << "\"\n";
+        std::cout << "  Intent: " << result.intent << " (期待: praise)\n";
+        std::cout << "  Evaluation: " << result.evaluation_to_ai << " (期待: positive)\n";
+        std::cout << "  Sentiment: " << std::fixed << std::setprecision(2) 
+                  << result.sentiment_score << " (期待: > 0.5)\n";
+        
+        bool success = (result.intent == "praise" && 
+                       result.evaluation_to_ai == "positive" && 
+                       result.sentiment_score > 0.5);
+        std::cout << "  結果: " << (success ? "✓ PASS" : "✗ FAIL") << "\n\n";
+        if (success) context_passed++; else context_failed++;
+    }
+    
+    // テストケース3: 前の回答への批判
+    {
+        std::cout << "[テスト3] 前の回答への批判\n";
+        std::deque<ConversationTurn> history;
+        history.push_back(ConversationTurn("user", "量子コンピュータって何？"));
+        history.push_back(ConversationTurn("assistant", "量子力学の原理を使った新しいコンピュータです。"));
+        
+        std::cout << "  【会話履歴】\n";
+        for (const auto& turn : history) {
+            std::cout << "    " << turn.role << ": " << turn.content << "\n";
+        }
+        
+        std::string test_input = "もっと具体的に説明してよ。そんな抽象的な説明じゃわからない";
+        auto result = analyzer.analyze(test_input, &history);
+        
+        std::cout << "  入力: \"" << test_input << "\"\n";
+        std::cout << "  Intent: " << result.intent << " (期待: criticism)\n";
+        std::cout << "  Evaluation: " << result.evaluation_to_ai << " (期待: negative)\n";
+        std::cout << "  Sentiment: " << std::fixed << std::setprecision(2) 
+                  << result.sentiment_score << " (期待: < 0)\n";
+        
+        bool success = (result.intent == "criticism" && 
+                       result.evaluation_to_ai == "negative" && 
+                       result.sentiment_score < 0);
+        std::cout << "  結果: " << (success ? "✓ PASS" : "✗ FAIL") << "\n\n";
+        if (success) context_passed++; else context_failed++;
+    }
+    
+    // テストケース4: 話題の切り替え
+    {
+        std::cout << "[テスト4] 話題の切り替え\n";
+        std::deque<ConversationTurn> history;
+        history.push_back(ConversationTurn("user", "C++のポインタについて"));
+        history.push_back(ConversationTurn("assistant", "ポインタはメモリアドレスを格納する変数です。"));
+        history.push_back(ConversationTurn("user", "参照との違いは？"));
+        history.push_back(ConversationTurn("assistant", "参照はエイリアスで、nullにできません。"));
+        
+        std::cout << "  【会話履歴】\n";
+        for (const auto& turn : history) {
+            std::cout << "    " << turn.role << ": " << turn.content << "\n";
+        }
+        
+        std::string test_input = "ところで、今日は良い天気だね";
+        auto result = analyzer.analyze(test_input, &history);
+        
+        std::cout << "  入力: \"" << test_input << "\"\n";
+        std::cout << "  Intent: " << result.intent << " (期待: casual)\n";
+        std::cout << "  Topic: " << result.topic << " (期待: 気候/天気)\n";
+        
+        bool success = (result.intent == "casual");
+        std::cout << "  結果: " << (success ? "✓ PASS" : "✗ FAIL") << "\n\n";
+        if (success) context_passed++; else context_failed++;
+    }
+    
+    // テストケース5: 複雑な指示語チェーン
+    {
+        std::cout << "[テスト5] 複雑な指示語チェーン\n";
+        std::deque<ConversationTurn> history;
+        history.push_back(ConversationTurn("user", "メモリリークって何？"));
+        history.push_back(ConversationTurn("assistant", "確保したメモリを解放し忘れることです。"));
+        history.push_back(ConversationTurn("user", "それってどうやって防ぐの？"));
+        history.push_back(ConversationTurn("assistant", "スマートポインタを使うと自動的に解放されます。"));
+        
+        std::cout << "  【会話履歴】\n";
+        for (const auto& turn : history) {
+            std::cout << "    " << turn.role << ": " << turn.content << "\n";
+        }
+        
+        std::string test_input = "なるほど！それすごく便利そう";
+        auto result = analyzer.analyze(test_input, &history);
+        
+        std::cout << "  入力: \"" << test_input << "\"\n";
+        std::cout << "  Intent: " << result.intent << " (期待: praise or casual)\n";
+        std::cout << "  Sentiment: " << std::fixed << std::setprecision(2) 
+                  << result.sentiment_score << " (期待: > 0.2)\n";
+        
+        bool success = ((result.intent == "praise" || result.intent == "casual") && 
+                       result.sentiment_score > 0.2);
+        std::cout << "  結果: " << (success ? "✓ PASS" : "✗ FAIL") << "\n\n";
+        if (success) context_passed++; else context_failed++;
+    }
+    
+    // 会話履歴付きテストのサマリー
+    std::cout << "========================================\n";
+    std::cout << " 会話履歴付きテスト サマリー\n";
+    std::cout << "========================================\n";
+    std::cout << "合計:   " << (context_passed + context_failed) << " テスト\n";
+    std::cout << "合格:   " << context_passed << "\n";
+    std::cout << "不合格: " << context_failed << "\n";
+    std::cout << "合格率: " << std::fixed << std::setprecision(1) 
+              << (100.0 * context_passed / (context_passed + context_failed)) << "%\n";
+    
     std::cout << "\n";
 }
 
 int main(int argc, char** argv) {
     // コマンドライン引数のチェック
+    bool debug_mode = false;
+    
     if (argc > 1) {
         std::string arg = argv[1];
         
+        // デバッグモードのチェック
+        if (arg == "--debug" || arg == "-d") {
+            debug_mode = true;
+            std::cout << "デバッグモードが有効化されました\n\n";
+        }
         // テストモード
-        if (arg == "--test-analyzer" || arg == "--test") {
+        else if (arg == "--test-analyzer" || arg == "--test") {
             run_analyzer_test_mode(true, DEFAULT_MODEL_PATH);  // LLMモード
             return 0;
         }
-        
         // キーワードベースのみのテスト
-        if (arg == "--test-keyword") {
+        else if (arg == "--test-keyword") {
             run_analyzer_test_mode(false, "");  // キーワードベースのみ
             return 0;
         }
-        
         // ヘルプ
-        if (arg == "--help" || arg == "-h") {
+        else if (arg == "--help" || arg == "-h") {
             std::cout << "感情駆動型AIエージェント\n\n";
             std::cout << "使用方法:\n";
             std::cout << "  LLMapp.exe                  - 通常の対話モード\n";
+            std::cout << "  LLMapp.exe --debug          - デバッグモード（詳細ログ出力）\n";
             std::cout << "  LLMapp.exe --test-analyzer  - InputAnalyzer テスト (LLMモード)\n";
             std::cout << "  LLMapp.exe --test-keyword   - InputAnalyzer テスト (キーワードのみ)\n";
             std::cout << "  LLMapp.exe --help           - このヘルプを表示\n";
@@ -235,11 +400,15 @@ int main(int argc, char** argv) {
     );
 
     // システムプロンプトの設定
+    // 注: PromptOrchestratorに既にデフォルトのキャラクター設定（律）が組み込まれています
+    // カスタマイズする場合のみ、以下のコメントを外してください
+    /*
     agent.set_system_prompt(
         "あなたは感情を持つAIアシスタントです。"
         "ユーザーとの対話を通じて、喜び、信頼、悲しみなどの感情を体験します。"
         "自然で人間らしい応答を心がけてください。"
     );
+    */
 
     // 初期化
     std::cout << "エージェントを初期化中...\n";
@@ -248,9 +417,17 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::cout << "初期化完了！\n\n";
+    
+    // デバッグモードの設定
+    if (debug_mode) {
+        agent.set_debug_mode(true);
+        std::cout << "\n※ デバッグモード: 全ての内部処理が表示されます\n\n";
+    }
 
     // デバッグ情報の表示
-    agent.print_debug_info();
+    if (!debug_mode) {
+        agent.print_debug_info();
+    }
 
     // ===== 対話ループ =====
     while (true) {

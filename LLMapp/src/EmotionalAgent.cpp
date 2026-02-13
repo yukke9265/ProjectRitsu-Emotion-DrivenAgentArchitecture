@@ -8,7 +8,8 @@ EmotionalAgent::EmotionalAgent(
     const PersonalityConstitution& constitution)
     : model_path_(model_path)
     , initialized_(false)
-    , last_error_("") {
+    , last_error_("")
+    , debug_mode_(false) {
     
     // モジュールの初期化
     input_analyzer_ = std::make_unique<InputAnalyzer>();
@@ -57,41 +58,129 @@ std::string EmotionalAgent::process(const std::string& user_input) {
     }
 
     try {
+        if (debug_mode_) {
+            std::cout << "\n" << std::string(60, '=') << "\n";
+            std::cout << "  デバッグモード: 処理開始\n";
+            std::cout << std::string(60, '=') << "\n";
+            std::cout << "ユーザー入力: \"" << user_input << "\"\n\n";
+        }
+
         // ===== 処理フロー =====
 
-        // Step 1: 入力解析
-        AnalyzedInput analyzed = input_analyzer_->analyze(user_input);
+        // Step 1: 入力解析（会話履歴を渡す）
+        if (debug_mode_) {
+            std::cout << "--- [Step 1] 入力解析 ---\n";
+        }
+        
+        const auto& conversation_history = memory_controller_->get_short_term_history();
+        
+        if (debug_mode_ && !conversation_history.empty()) {
+            std::cout << "会話履歴（" << conversation_history.size() << "ターン）:\n";
+            int count = 0;
+            for (const auto& turn : conversation_history) {
+                std::cout << "  [" << ++count << "] " << turn.role << ": " 
+                          << (turn.content.length() > 60 ? turn.content.substr(0, 60) + "..." : turn.content) << "\n";
+            }
+            std::cout << "\n";
+        }
+        
+        AnalyzedInput analyzed = input_analyzer_->analyze(user_input, &conversation_history);
+        
+        if (debug_mode_) {
+            std::cout << "解析結果:\n";
+            std::cout << "  Topic: " << analyzed.topic << "\n";
+            std::cout << "  Intent: " << analyzed.intent << "\n";
+            std::cout << "  Evaluation: " << analyzed.evaluation_to_ai << "\n";
+            std::cout << "  Sentiment: " << analyzed.sentiment_score << "\n";
+            std::cout << "  Keywords: ";
+            for (size_t i = 0; i < analyzed.keywords.size(); ++i) {
+                std::cout << analyzed.keywords[i];
+                if (i < analyzed.keywords.size() - 1) std::cout << ", ";
+            }
+            std::cout << "\n\n";
+        }
 
         // Step 2: 感情エンジンで評価・更新
+        if (debug_mode_) {
+            std::cout << "--- [Step 2] 感情エンジン ---\n";
+            std::cout << "更新前の感情状態:\n" << emotion_engine_->describe_emotion() << "\n";
+        }
+        
         emotion_engine_->appraise_and_update(analyzed);
         emotion_engine_->apply_decay();  // 時間経過による減衰
+        
+        if (debug_mode_) {
+            std::cout << "更新後の感情状態:\n" << emotion_engine_->describe_emotion() << "\n\n";
+        }
 
         // Step 3: 短期メモリに追加
+        if (debug_mode_) {
+            std::cout << "--- [Step 3] 短期メモリ更新 ---\n";
+            std::cout << "ユーザー入力を短期メモリに追加\n\n";
+        }
+        
         memory_controller_->add_to_short_term("user", user_input);
 
         // Step 4: プロンプト生成
+        if (debug_mode_) {
+            std::cout << "--- [Step 4] プロンプト生成 ---\n";
+        }
+        
         std::string final_prompt = prompt_orchestrator_->build_final_prompt(
             user_input,
             *emotion_engine_,
             *memory_controller_
         );
-
-        // デバッグ出力（オプション）
-        // std::cout << "\n=== Generated Prompt ===\n" << final_prompt << "\n====================\n";
+        
+        if (debug_mode_) {
+            std::cout << "生成されたシステムプロンプト:\n";
+            std::cout << std::string(60, '-') << "\n";
+            std::cout << final_prompt << "\n";
+            std::cout << std::string(60, '-') << "\n\n";
+        }
 
         // Step 5: LLMで応答生成
+        if (debug_mode_) {
+            std::cout << "--- [Step 5] LLM推論 ---\n";
+            std::cout << "LLMに推論を要求中...\n";
+        }
+        
         std::string response = llm_inference_->infer(final_prompt);
+        
+        if (debug_mode_) {
+            std::cout << "LLM応答:\n";
+            std::cout << std::string(60, '-') << "\n";
+            std::cout << response << "\n";
+            std::cout << std::string(60, '-') << "\n\n";
+        }
 
         // Step 6: 応答を短期メモリに追加
+        if (debug_mode_) {
+            std::cout << "--- [Step 6] 応答を記憶 ---\n";
+            std::cout << "AI応答を短期メモリに追加\n\n";
+        }
+        
         memory_controller_->add_to_short_term("assistant", response);
 
         // Step 7: 定期的に記憶を統合（簡易実装：毎回実行）
         consolidate_memories();
+        
+        if (debug_mode_) {
+            std::cout << "--- [Step 7] 記憶統合 ---\n";
+            std::cout << "短期メモリサイズ: " << memory_controller_->get_short_term_size() << "\n";
+            std::cout << "長期メモリサイズ: " << get_episode_count() << "\n";
+            std::cout << "\n" << std::string(60, '=') << "\n";
+            std::cout << "  処理完了\n";
+            std::cout << std::string(60, '=') << "\n\n";
+        }
 
         return response;
 
     } catch (const std::exception& e) {
         last_error_ = std::string("処理中にエラーが発生: ") + e.what();
+        if (debug_mode_) {
+            std::cerr << "[エラー] " << last_error_ << "\n";
+        }
         return "[エラー] " + last_error_;
     }
 }
@@ -177,5 +266,18 @@ void EmotionalAgent::consolidate_memories() {
 
         // 記憶を統合
         memory_controller_->consolidate_memory(emotion_desc, keywords);
+    }
+}
+
+void EmotionalAgent::set_debug_mode(bool enable) {
+    debug_mode_ = enable;
+    
+    // 各モジュールにもデバッグモードを伝播
+    if (input_analyzer_) {
+        input_analyzer_->set_debug_mode(enable);
+    }
+    
+    if (enable) {
+        std::cout << "[デバッグモード] 有効化されました\n";
     }
 }

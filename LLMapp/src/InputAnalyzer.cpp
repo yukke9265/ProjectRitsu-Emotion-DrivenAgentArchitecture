@@ -1,5 +1,6 @@
 ﻿#include "InputAnalyzer.h"
 #include "LLMInference.h"
+#include "MemoryController.h"
 #include "Config.h"
 #include <algorithm>
 #include <sstream>
@@ -9,7 +10,8 @@
 
 InputAnalyzer::InputAnalyzer() 
     : llm_inference_(nullptr)
-    , use_llm_(false) {
+    , use_llm_(false)
+    , debug_mode_(false) {
     initialize_dictionaries();
 }
 
@@ -57,12 +59,13 @@ void InputAnalyzer::initialize_dictionaries() {
     };
 }
 
-AnalyzedInput InputAnalyzer::analyze(const std::string& user_input) {
+AnalyzedInput InputAnalyzer::analyze(const std::string& user_input,
+                                     const std::deque<ConversationTurn>* recent_history) {
     // ハイブリッドモード：LLMとキーワードベースの両方を試行
     if (use_llm_ && llm_inference_ != nullptr) {
         try {
             // LLMベースの分析を試行
-            AnalyzedInput llm_result = analyze_with_llm(user_input);
+            AnalyzedInput llm_result = analyze_with_llm(user_input, recent_history);
             
             // LLM結果の妥当性チェック（基本的な検証）
             if (!llm_result.intent.empty() && 
@@ -98,15 +101,41 @@ AnalyzedInput InputAnalyzer::analyze_with_keywords(const std::string& user_input
     return result;
 }
 
-AnalyzedInput InputAnalyzer::analyze_with_llm(const std::string& user_input) {
+AnalyzedInput InputAnalyzer::analyze_with_llm(const std::string& user_input,
+                                              const std::deque<ConversationTurn>* recent_history) {
     // プロンプトを生成
-    std::string prompt = create_analysis_prompt(user_input);
+    std::string prompt = create_analysis_prompt(user_input, recent_history);
+    
+    if (debug_mode_) {
+        std::cout << "  [InputAnalyzer] LLMへのプロンプト:\n";
+        std::cout << "  " << std::string(50, '-') << "\n";
+        // プロンプトが長い場合は最初と最後だけ表示
+        if (prompt.length() > 500) {
+            std::cout << "  " << prompt.substr(0, 250) << "\n";
+            std::cout << "  [...省略 " << (prompt.length() - 500) << " 文字...]\n";
+            std::cout << "  " << prompt.substr(prompt.length() - 250) << "\n";
+        } else {
+            std::cout << "  " << prompt << "\n";
+        }
+        std::cout << "  " << std::string(50, '-') << "\n\n";
+    }
     
     // パース成功まで最大LLM_PARSE_RETRY_COUNT回リトライ
     for (int retry = 0; retry < LLM_PARSE_RETRY_COUNT; retry++) {
         try {
+            if (debug_mode_ && retry > 0) {
+                std::cout << "  [InputAnalyzer] リトライ " << retry + 1 << "回目\n";
+            }
+            
             // LLMで単発推論（KVキャッシュは自動クリア）
             std::string llm_output = llm_inference_->infer_stateless(prompt);
+            
+            if (debug_mode_) {
+                std::cout << "  [InputAnalyzer] LLM応答:\n";
+                std::cout << "  " << std::string(50, '-') << "\n";
+                std::cout << "  " << llm_output << "\n";
+                std::cout << "  " << std::string(50, '-') << "\n\n";
+            }
             
             // LLM応答をパースして構造化データに変換
             AnalyzedInput result = parse_llm_response(llm_output, user_input);
@@ -136,12 +165,37 @@ AnalyzedInput InputAnalyzer::analyze_with_llm(const std::string& user_input) {
     return analyze_with_keywords(user_input);
 }
 
-std::string InputAnalyzer::create_analysis_prompt(const std::string& user_input) {
-    return R"(あなたはユーザー入力を構造化分析する専門家です。
+std::string InputAnalyzer::create_analysis_prompt(const std::string& user_input,
+                                                  const std::deque<ConversationTurn>* recent_history) {
+    std::string prompt = R"(あなたはユーザー入力を構造化分析する専門家です。
 以下のユーザー発言を分析し、JSON形式で出力してください。
 
-【ユーザー発言】
-)" + user_input + R"(
+)";
+
+    // 会話履歴がある場合は追加
+    if (recent_history != nullptr && !recent_history->empty()) {
+        prompt += "【最近の会話履歴】\n";
+        // 最新5ターンまでを取得
+        int turns_to_show = std::min(5, static_cast<int>(recent_history->size()));
+        auto start_iter = recent_history->end() - turns_to_show;
+        
+        for (auto it = start_iter; it != recent_history->end(); ++it) {
+            prompt += it->role + ": " + it->content + "\n";
+        }
+        prompt += "\n";
+    }
+
+    prompt += "【ユーザー発言】\n" + user_input + R"(
+
+【会話履歴を考慮した分析の重要ルール】
+1. **指示語の解釈**: 「それ」「これ」「その話」などは会話履歴から参照先を特定し、topicに反映
+2. **前の回答への反応**: 
+   - 「もっと〜して」「〜してください」「〜がない」「〜が足りない」などの改善要求は criticism
+   - 前の回答への不満表現（「わからない」「抽象的」「不十分」）は evaluation=negative
+3. **話題転換の検出**: 
+   - 「ところで」「さて」「それはそうと」「話は変わるけど」で始まる発言は casual（新しい話題）
+   - 前の会話と無関係な内容の場合も casual
+4. **継続的な話題**: 会話履歴の内容を引き継ぐ場合、topicは履歴の文脈を含める
 
 【出力形式】
 {
@@ -182,8 +236,11 @@ std::string InputAnalyzer::create_analysis_prompt(const std::string& user_input)
 2. 挨拶の感情値: 「こんにちは」「よろしく」だけなら0.0～0.3（明るい修飾語があれば0.5～0.8）
 3. 混合感情: 肯定と否定が混在する場合、より強い方に寄せるが極端にしない（-0.6～0.6）
 4. 質問のトーン: 疑念を含む質問（「本当に？」）は evaluation=neutral, sentiment=0.0～0.3
+5. 改善要求は criticism: 「もっと〜して」「〜が足りない」「〜がない」などは批判として扱う
 
 【分析例】
+
+■ 単独の発言（会話履歴なし）
 入力: "助かります。ただ、もう少し詳細が知りたいです"
 → {"topic":"情報の詳細度", "intent":"question", "evaluation_to_ai":"neutral", "keywords":["助かる","詳細","知りたい"], "sentiment_score":0.3}
 
@@ -196,9 +253,32 @@ std::string InputAnalyzer::create_analysis_prompt(const std::string& user_input)
 入力: "まあまあだけど、もっと具体例があるといいな"
 → {"topic":"具体例の不足", "intent":"criticism", "evaluation_to_ai":"neutral", "keywords":["まあまあ","具体例","欲しい"], "sentiment_score":-0.3}
 
+■ 会話履歴を考慮した分析（重要）
+会話履歴: "user: Pythonの辞書について教えて" → "assistant: 辞書はキーと値のペアを格納します"
+入力: "それはわかった。具体例を教えて"
+→ {"topic":"Pythonの辞書の具体例", "intent":"question", "evaluation_to_ai":"neutral", "keywords":["わかった","具体例","辞書"], "sentiment_score":0.1}
+※「それ」=Pythonの辞書を指す
+
+会話履歴: "user: 機械学習について" → "assistant: データからパターンを学習する技術です"
+入力: "もっと具体的に説明してよ。そんな抽象的な説明じゃわからない"
+→ {"topic":"機械学習の説明の不満", "intent":"criticism", "evaluation_to_ai":"negative", "keywords":["具体的","抽象的","わからない"], "sentiment_score":-0.5}
+※前の回答への不満 → criticism + negative
+
+会話履歴: "user: C++のポインタについて" → "assistant: メモリアドレスを格納する変数です"
+入力: "ところで、今日は良い天気だね"
+→ {"topic":"天気", "intent":"casual", "evaluation_to_ai":"neutral", "keywords":["ところで","天気","良い"], "sentiment_score":0.2}
+※「ところで」は話題転換のマーカー → casual
+
+会話履歴: "user: メモリリークって何？" → "assistant: メモリを解放し忘れることです" → "user: 防ぐ方法は？" → "assistant: スマートポインタを使います"
+入力: "なるほど！それすごく便利そう"
+→ {"topic":"スマートポインタの有用性", "intent":"praise", "evaluation_to_ai":"neutral", "keywords":["なるほど","便利","スマートポインタ"], "sentiment_score":0.6}
+※「それ」=スマートポインタを指す、ポジティブな反応 → praise
+
 【出力】
 JSON形式のみを出力してください。説明や追加の文章は不要です。
 )";
+        
+    return prompt;
 }
 
 AnalyzedInput InputAnalyzer::parse_llm_response(

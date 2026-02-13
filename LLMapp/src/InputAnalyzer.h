@@ -2,9 +2,11 @@
 
 #include <string>
 #include <vector>
+#include <deque>
 
 // 前方宣言
 class LLMInference;
+struct ConversationTurn;
 
 /**
  * @brief ユーザー発言の構造化データ
@@ -49,11 +51,25 @@ public:
     bool is_llm_mode_enabled() const { return use_llm_; }
 
     /**
+     * @brief デバッグモードを有効化/無効化
+     * @param enable trueでデバッグログを出力
+     */
+    void set_debug_mode(bool enable) { debug_mode_ = enable; }
+
+    /**
+     * @brief デバッグモードの状態を取得
+     * @return デバッグモードが有効ならtrue
+     */
+    bool is_debug_mode() const { return debug_mode_; }
+
+    /**
      * @brief ユーザー発言を構造化データに変換
      * @param user_input ユーザーの生の発言
+     * @param recent_history 直近の会話履歴（デフォルト: 空）
      * @return 構造化された入力データ
      */
-    AnalyzedInput analyze(const std::string& user_input);
+    AnalyzedInput analyze(const std::string& user_input,
+                         const std::deque<ConversationTurn>* recent_history = nullptr);
 
     /**
      * @brief 感情スコアを計算（-1.0 = 非常にネガティブ, +1.0 = 非常にポジティブ）
@@ -93,6 +109,7 @@ private:
     // LLM関連
     LLMInference* llm_inference_;  // LLMインスタンス（所有権なし）
     bool use_llm_;                  // LLMモードのフラグ
+    bool debug_mode_;               // デバッグモードのフラグ
 
     void initialize_dictionaries();
     std::string extract_topic(const std::string& text);
@@ -101,9 +118,11 @@ private:
     /**
      * @brief LLMを使用した入力分析
      * @param user_input ユーザーの発言
+     * @param recent_history 直近の会話履歴
      * @return 構造化された入力データ
      */
-    AnalyzedInput analyze_with_llm(const std::string& user_input);
+    AnalyzedInput analyze_with_llm(const std::string& user_input,
+                                   const std::deque<ConversationTurn>* recent_history);
 
     /**
      * @brief キーワードベースの分析（従来方式）
@@ -115,9 +134,11 @@ private:
     /**
      * @brief LLM分析用のプロンプトを生成
      * @param user_input ユーザーの発言
+     * @param recent_history 直近の会話履歴
      * @return 分析用プロンプト
      */
-    std::string create_analysis_prompt(const std::string& user_input);
+    std::string create_analysis_prompt(const std::string& user_input,
+                                       const std::deque<ConversationTurn>* recent_history);
 
     /**
      * @brief LLMの応答をパースして構造化データに変換
