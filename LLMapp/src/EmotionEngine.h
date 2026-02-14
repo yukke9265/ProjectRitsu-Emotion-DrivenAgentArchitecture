@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "Config.h"
 #include "InputAnalyzer.h"
 #include <string>
 #include <map>
@@ -54,12 +55,12 @@ struct PersonalityConstitution {
     double baseline_valence;         // 基準感情価（-1.0 ~ 1.0）
 
     PersonalityConstitution()
-        : core_values("助けになり、親切で、誠実であること")
-        , communication_style("丁寧で共感的")
-        , sensitivity_to_praise(0.7)
-        , sensitivity_to_criticism(0.5)
-        , decay_rate(0.1)
-        , baseline_valence(0.3)  // やや前向きなベースライン
+        : core_values(EMOTION_DEFAULT_CORE_VALUES)
+        , communication_style(EMOTION_DEFAULT_COMMUNICATION_STYLE)
+        , sensitivity_to_praise(EMOTION_DEFAULT_SENSITIVITY_TO_PRAISE)
+        , sensitivity_to_criticism(EMOTION_DEFAULT_SENSITIVITY_TO_CRITICISM)
+        , decay_rate(EMOTION_DEFAULT_DECAY_RATE)
+        , baseline_valence(EMOTION_DEFAULT_BASELINE_VALENCE)  // やや前向きなベースライン
     {}
 };
 
@@ -150,4 +151,24 @@ private:
      * @return 感情名の文字列
      */
     std::string emotion_to_string(BasicEmotion emotion) const;
+
+    /**
+     * @brief 文脈に応じた感情反応倍率を取得
+     * @param analyzed_input 構造化された入力データ
+     * @return 反応倍率
+     */
+    double get_context_multiplier(const AnalyzedInput& analyzed_input) const;
+
+    /**
+     * @brief 一次感情変化から連鎖的な二次感情変化を付与
+     * @param deltas 感情変化量
+     */
+    void apply_emotion_chain_effects(std::map<BasicEmotion, double>& deltas) const;
+
+    /**
+     * @brief 感情ごとの減衰率を取得
+     * @param emotion 感情の種類
+     * @return 減衰率
+     */
+    double get_decay_rate_for_emotion(BasicEmotion emotion) const;
 };

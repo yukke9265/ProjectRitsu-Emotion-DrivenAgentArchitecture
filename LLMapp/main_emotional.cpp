@@ -104,8 +104,8 @@ void run_analyzer_test_mode(bool use_llm, const std::string& model_path) {
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
         total_time += duration.count();
         
-        bool intent_ok = (result.intent == test.expected_intent);
-        bool eval_ok = (result.evaluation_to_ai == test.expected_evaluation);
+        bool intent_ok = (intent_to_string(result.intent) == test.expected_intent);
+        bool eval_ok = (evaluation_to_string(result.evaluation_to_ai) == test.expected_evaluation);
         bool sentiment_ok = (result.sentiment_score >= test.expected_sentiment_min &&
                             result.sentiment_score <= test.expected_sentiment_max);
         bool success = intent_ok && eval_ok && sentiment_ok;
@@ -113,10 +113,10 @@ void run_analyzer_test_mode(bool use_llm, const std::string& model_path) {
         std::cout << "\n" << (success ? "[✓ PASS] " : "[✗ FAIL] ") << test.description 
                   << " (" << duration.count() << "ms)\n";
         std::cout << "  入力: \"" << test.input << "\"\n";
-        std::cout << "  Intent:     " << result.intent;
+        std::cout << "  Intent:     " << intent_to_string(result.intent);
         if (!intent_ok) std::cout << " (期待: " << test.expected_intent << ")";
         std::cout << "\n";
-        std::cout << "  Evaluation: " << result.evaluation_to_ai;
+        std::cout << "  Evaluation: " << evaluation_to_string(result.evaluation_to_ai);
         if (!eval_ok) std::cout << " (期待: " << test.expected_evaluation << ")";
         std::cout << "\n";
         std::cout << "  Sentiment:  " << std::fixed << std::setprecision(2) << result.sentiment_score;
@@ -210,9 +210,9 @@ void run_analyzer_test_mode(bool use_llm, const std::string& model_path) {
         
         std::cout << "  入力: \"" << test_input << "\"\n";
         std::cout << "  Topic: " << result.topic << " (期待: Pythonの辞書関連)\n";
-        std::cout << "  Intent: " << result.intent << " (期待: question)\n";
+        std::cout << "  Intent: " << intent_to_string(result.intent) << " (期待: question)\n";
         
-        bool success = (result.intent == "question");
+        bool success = (result.intent == Intent::QUESTION);
         std::cout << "  結果: " << (success ? "✓ PASS" : "✗ FAIL") << "\n\n";
         if (success) context_passed++; else context_failed++;
     }
@@ -235,13 +235,13 @@ void run_analyzer_test_mode(bool use_llm, const std::string& model_path) {
         auto result = analyzer.analyze(test_input, &history);
         
         std::cout << "  入力: \"" << test_input << "\"\n";
-        std::cout << "  Intent: " << result.intent << " (期待: praise)\n";
-        std::cout << "  Evaluation: " << result.evaluation_to_ai << " (期待: positive)\n";
+        std::cout << "  Intent: " << intent_to_string(result.intent) << " (期待: praise)\n";
+        std::cout << "  Evaluation: " << evaluation_to_string(result.evaluation_to_ai) << " (期待: positive)\n";
         std::cout << "  Sentiment: " << std::fixed << std::setprecision(2) 
                   << result.sentiment_score << " (期待: > 0.5)\n";
         
-        bool success = (result.intent == "praise" && 
-                       result.evaluation_to_ai == "positive" && 
+        bool success = (result.intent == Intent::PRAISE && 
+                   result.evaluation_to_ai == EvaluationToAI::POSITIVE && 
                        result.sentiment_score > 0.5);
         std::cout << "  結果: " << (success ? "✓ PASS" : "✗ FAIL") << "\n\n";
         if (success) context_passed++; else context_failed++;
@@ -263,13 +263,13 @@ void run_analyzer_test_mode(bool use_llm, const std::string& model_path) {
         auto result = analyzer.analyze(test_input, &history);
         
         std::cout << "  入力: \"" << test_input << "\"\n";
-        std::cout << "  Intent: " << result.intent << " (期待: criticism)\n";
-        std::cout << "  Evaluation: " << result.evaluation_to_ai << " (期待: negative)\n";
+        std::cout << "  Intent: " << intent_to_string(result.intent) << " (期待: criticism)\n";
+        std::cout << "  Evaluation: " << evaluation_to_string(result.evaluation_to_ai) << " (期待: negative)\n";
         std::cout << "  Sentiment: " << std::fixed << std::setprecision(2) 
                   << result.sentiment_score << " (期待: < 0)\n";
         
-        bool success = (result.intent == "criticism" && 
-                       result.evaluation_to_ai == "negative" && 
+        bool success = (result.intent == Intent::CRITICISM && 
+                   result.evaluation_to_ai == EvaluationToAI::NEGATIVE && 
                        result.sentiment_score < 0);
         std::cout << "  結果: " << (success ? "✓ PASS" : "✗ FAIL") << "\n\n";
         if (success) context_passed++; else context_failed++;
@@ -293,10 +293,10 @@ void run_analyzer_test_mode(bool use_llm, const std::string& model_path) {
         auto result = analyzer.analyze(test_input, &history);
         
         std::cout << "  入力: \"" << test_input << "\"\n";
-        std::cout << "  Intent: " << result.intent << " (期待: casual)\n";
+        std::cout << "  Intent: " << intent_to_string(result.intent) << " (期待: casual)\n";
         std::cout << "  Topic: " << result.topic << " (期待: 気候/天気)\n";
         
-        bool success = (result.intent == "casual");
+        bool success = (result.intent == Intent::CASUAL);
         std::cout << "  結果: " << (success ? "✓ PASS" : "✗ FAIL") << "\n\n";
         if (success) context_passed++; else context_failed++;
     }
@@ -319,11 +319,11 @@ void run_analyzer_test_mode(bool use_llm, const std::string& model_path) {
         auto result = analyzer.analyze(test_input, &history);
         
         std::cout << "  入力: \"" << test_input << "\"\n";
-        std::cout << "  Intent: " << result.intent << " (期待: praise or casual)\n";
+        std::cout << "  Intent: " << intent_to_string(result.intent) << " (期待: praise or casual)\n";
         std::cout << "  Sentiment: " << std::fixed << std::setprecision(2) 
                   << result.sentiment_score << " (期待: > 0.2)\n";
         
-        bool success = ((result.intent == "praise" || result.intent == "casual") && 
+        bool success = ((result.intent == Intent::PRAISE || result.intent == Intent::CASUAL) && 
                        result.sentiment_score > 0.2);
         std::cout << "  結果: " << (success ? "✓ PASS" : "✗ FAIL") << "\n\n";
         if (success) context_passed++; else context_failed++;

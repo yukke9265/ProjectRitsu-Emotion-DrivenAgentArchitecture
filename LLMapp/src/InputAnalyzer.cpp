@@ -3,27 +3,119 @@
 #include "MemoryController.h"
 #include "Config.h"
 #include <algorithm>
+#include <array>
 #include <sstream>
 #include <cctype>
 #include <regex>
 #include <iostream>
 
 namespace {
-bool is_valid_intent(const std::string& intent) {
-    return intent == "praise" || intent == "criticism" || intent == "question" ||
-           intent == "greeting" || intent == "casual";
+struct IntentMapping {
+    Intent value;
+    const char* name;
+};
+
+struct EvaluationMapping {
+    EvaluationToAI value;
+    const char* name;
+};
+
+constexpr std::array<IntentMapping, 5> kIntentMappings = {{
+    {Intent::PRAISE, "praise"},
+    {Intent::CRITICISM, "criticism"},
+    {Intent::QUESTION, "question"},
+    {Intent::GREETING, "greeting"},
+    {Intent::CASUAL, "casual"},
+}};
+
+constexpr std::array<EvaluationMapping, 3> kEvaluationMappings = {{
+    {EvaluationToAI::POSITIVE, "positive"},
+    {EvaluationToAI::NEUTRAL, "neutral"},
+    {EvaluationToAI::NEGATIVE, "negative"},
+}};
 }
 
-bool is_valid_evaluation(const std::string& evaluation) {
-    return evaluation == "positive" || evaluation == "neutral" || evaluation == "negative";
+std::string intent_to_string(Intent intent) {
+    switch (intent) {
+        case Intent::PRAISE: return "praise";
+        case Intent::CRITICISM: return "criticism";
+        case Intent::QUESTION: return "question";
+        case Intent::GREETING: return "greeting";
+        case Intent::CASUAL: return "casual";
+        default: return "unknown";
+    }
+}
+
+Intent intent_from_string(const std::string& intent) {
+    for (const auto& mapping : kIntentMappings) {
+        if (intent == mapping.name) {
+            return mapping.value;
+        }
+    }
+    return Intent::UNKNOWN;
+}
+
+std::string evaluation_to_string(EvaluationToAI evaluation) {
+    switch (evaluation) {
+        case EvaluationToAI::POSITIVE: return "positive";
+        case EvaluationToAI::NEUTRAL: return "neutral";
+        case EvaluationToAI::NEGATIVE: return "negative";
+        default: return "unknown";
+    }
+}
+
+EvaluationToAI evaluation_from_string(const std::string& evaluation) {
+    for (const auto& mapping : kEvaluationMappings) {
+        if (evaluation == mapping.name) {
+            return mapping.value;
+        }
+    }
+    return EvaluationToAI::UNKNOWN;
+}
+
+namespace {
+bool is_valid_intent(Intent intent) {
+    return intent != Intent::UNKNOWN;
+}
+
+bool is_valid_evaluation(EvaluationToAI evaluation) {
+    return evaluation != EvaluationToAI::UNKNOWN;
 }
 
 bool is_semantically_valid_llm_result(const AnalyzedInput& result) {
     if (result.topic.empty()) return false;
     if (!is_valid_intent(result.intent)) return false;
     if (!is_valid_evaluation(result.evaluation_to_ai)) return false;
-    if (result.sentiment_score < -1.0 || result.sentiment_score > 1.0) return false;
+    if (result.sentiment_score < INPUT_ANALYZER_SENTIMENT_MIN ||
+        result.sentiment_score > INPUT_ANALYZER_SENTIMENT_MAX) return false;
     return true;
+}
+
+void log_unknown_analysis_labels(const AnalyzedInput& result, const char* source) {
+#if !INPUT_ANALYZER_LOG_UNKNOWN_LABELS
+    (void)result;
+    (void)source;
+    return;
+#endif
+
+    const bool intent_unknown = (result.intent == Intent::UNKNOWN);
+    const bool evaluation_unknown = (result.evaluation_to_ai == EvaluationToAI::UNKNOWN);
+
+    if (!intent_unknown && !evaluation_unknown) {
+        return;
+    }
+
+    std::cerr << "[警告] " << source << " で未知ラベルを検出: ";
+    if (intent_unknown) {
+        std::cerr << "intent=UNKNOWN";
+    }
+    if (intent_unknown && evaluation_unknown) {
+        std::cerr << ", ";
+    }
+    if (evaluation_unknown) {
+        std::cerr << "evaluation_to_ai=UNKNOWN";
+    }
+    std::cerr << " | input=\"" << result.raw_text << "\"" << std::endl;
 }
 }
 
@@ -50,32 +142,16 @@ void InputAnalyzer::enable_llm_mode(bool enable) {
 
 void InputAnalyzer::initialize_dictionaries() {
     // ポジティブキーワード
-    positive_keywords_ = {
-        "good", "great", "excellent", "amazing", "wonderful",
-        "すごい", "良い", "素晴らしい", "最高", "嬉しい", "楽しい",
-        "ありがとう", "感謝", "助かる"
-    };
+    positive_keywords_ = { INPUT_ANALYZER_POSITIVE_KEYWORDS };
 
     // ネガティブキーワード
-    negative_keywords_ = {
-        "bad", "terrible", "awful", "horrible", "wrong",
-        "悪い", "ひどい", "最悪", "嫌", "つまらない", "不快",
-        "違う", "間違い", "ダメ"
-    };
+    negative_keywords_ = { INPUT_ANALYZER_NEGATIVE_KEYWORDS };
 
     // 賞賛キーワード
-    praise_keywords_ = {
-        "すごい", "素晴らしい", "賢い", "天才", "優秀",
-        "ありがとう", "感謝", "役立つ", "助かる",
-        "smart", "brilliant", "genius", "helpful", "thanks"
-    };
+    praise_keywords_ = { INPUT_ANALYZER_PRAISE_KEYWORDS };
 
     // 批判キーワード
-    criticism_keywords_ = {
-        "ダメ", "使えない", "バカ", "無能", "役立たず",
-        "最悪", "ひどい", "間違い", "違う",
-        "stupid", "useless", "terrible", "wrong", "bad"
-    };
+    criticism_keywords_ = { INPUT_ANALYZER_CRITICISM_KEYWORDS };
 }
 
 AnalyzedInput InputAnalyzer::analyze(const std::string& user_input,
@@ -87,9 +163,9 @@ AnalyzedInput InputAnalyzer::analyze(const std::string& user_input,
             AnalyzedInput llm_result = analyze_with_llm(user_input, recent_history);
             
             // LLM結果の妥当性チェック（基本的な検証）
-            if (!llm_result.intent.empty() && 
-                llm_result.sentiment_score >= -1.0 && 
-                llm_result.sentiment_score <= 1.0) {
+            if (llm_result.intent != Intent::UNKNOWN && 
+                llm_result.sentiment_score >= INPUT_ANALYZER_SENTIMENT_MIN && 
+                llm_result.sentiment_score <= INPUT_ANALYZER_SENTIMENT_MAX) {
                 // LLM結果が妥当なので採用
                 return llm_result;
             }
@@ -117,6 +193,8 @@ AnalyzedInput InputAnalyzer::analyze_with_keywords(const std::string& user_input
     result.keywords = extract_keywords(user_input);
     result.sentiment_score = calculate_sentiment(user_input);
 
+    log_unknown_analysis_labels(result, "キーワード分析");
+
     return result;
 }
 
@@ -129,10 +207,12 @@ AnalyzedInput InputAnalyzer::analyze_with_llm(const std::string& user_input,
         std::cout << "  [InputAnalyzer] LLMへのプロンプト:\n";
         std::cout << "  " << std::string(50, '-') << "\n";
         // プロンプトが長い場合は最初と最後だけ表示
-        if (prompt.length() > 500) {
-            std::cout << "  " << prompt.substr(0, 250) << "\n";
-            std::cout << "  [...省略 " << (prompt.length() - 500) << " 文字...]\n";
-            std::cout << "  " << prompt.substr(prompt.length() - 250) << "\n";
+        if (prompt.length() > INPUT_ANALYZER_PROMPT_PREVIEW_MAX_LENGTH) {
+            std::cout << "  " << prompt.substr(0, INPUT_ANALYZER_PROMPT_PREVIEW_HEAD_LENGTH) << "\n";
+            std::cout << "  [...省略 "
+                      << (prompt.length() - INPUT_ANALYZER_PROMPT_PREVIEW_MAX_LENGTH)
+                      << " 文字...]\n";
+            std::cout << "  " << prompt.substr(prompt.length() - INPUT_ANALYZER_PROMPT_PREVIEW_TAIL_LENGTH) << "\n";
         } else {
             std::cout << "  " << prompt << "\n";
         }
@@ -165,6 +245,8 @@ AnalyzedInput InputAnalyzer::analyze_with_llm(const std::string& user_input,
             
             // LLM応答をパースして構造化データに変換
             AnalyzedInput result = parse_llm_response(llm_output, user_input);
+
+            log_unknown_analysis_labels(result, "LLM分析");
 
             // JSONとしては解釈できても、空項目や未知ラベルは再生成対象にする
             if (!is_semantically_valid_llm_result(result)) {
@@ -207,7 +289,8 @@ std::string InputAnalyzer::create_analysis_prompt(const std::string& user_input,
     if (recent_history != nullptr && !recent_history->empty()) {
         prompt += "【最近の会話履歴】\n";
         // 最新5ターンまでを取得
-        int turns_to_show = std::min(5, static_cast<int>(recent_history->size()));
+        int turns_to_show = std::min(INPUT_ANALYZER_HISTORY_TURNS_TO_SHOW,
+                                     static_cast<int>(recent_history->size()));
         auto start_iter = recent_history->end() - turns_to_show;
         
         for (auto it = start_iter; it != recent_history->end(); ++it) {
@@ -358,15 +441,15 @@ AnalyzedInput InputAnalyzer::parse_llm_response(
         // intent の抽出
         std::regex intent_regex(R"xxx("intent"\s*:\s*"([^"]*)")xxx");
         if (std::regex_search(json_str, match, intent_regex) && match.size() > 1) {
-            result.intent = match[1].str();
-            has_intent = !result.intent.empty();
+            result.intent = intent_from_string(match[1].str());
+            has_intent = result.intent != Intent::UNKNOWN;
         }
         
         // evaluation_to_ai の抽出
         std::regex eval_regex(R"xxx("evaluation_to_ai"\s*:\s*"([^"]*)")xxx");
         if (std::regex_search(json_str, match, eval_regex) && match.size() > 1) {
-            result.evaluation_to_ai = match[1].str();
-            has_evaluation = !result.evaluation_to_ai.empty();
+            result.evaluation_to_ai = evaluation_from_string(match[1].str());
+            has_evaluation = result.evaluation_to_ai != EvaluationToAI::UNKNOWN;
         }
         
         // sentiment_score の抽出
@@ -374,7 +457,8 @@ AnalyzedInput InputAnalyzer::parse_llm_response(
         if (std::regex_search(json_str, match, sentiment_regex) && match.size() > 1) {
             result.sentiment_score = std::stod(match[1].str());
             // 範囲チェック
-            result.sentiment_score = std::max(-1.0, std::min(1.0, result.sentiment_score));
+            result.sentiment_score = std::max(INPUT_ANALYZER_SENTIMENT_MIN,
+                                              std::min(INPUT_ANALYZER_SENTIMENT_MAX, result.sentiment_score));
             has_sentiment = true;
         }
         
@@ -436,52 +520,59 @@ double InputAnalyzer::calculate_sentiment(const std::string& text) {
     }
 
     double score = static_cast<double>(positive_count - negative_count) / total;
-    return std::max(-1.0, std::min(1.0, score));
+    return std::max(INPUT_ANALYZER_SENTIMENT_MIN,
+                    std::min(INPUT_ANALYZER_SENTIMENT_MAX, score));
 }
 
-std::string InputAnalyzer::classify_intent(const std::string& text) {
+Intent InputAnalyzer::classify_intent(const std::string& text) {
     std::string lower_text = text;
     std::transform(lower_text.begin(), lower_text.end(), lower_text.begin(), ::tolower);
 
     // 賞賛の検出
     for (const auto& keyword : praise_keywords_) {
         if (lower_text.find(keyword) != std::string::npos) {
-            return "praise";
+            return Intent::PRAISE;
         }
     }
 
     // 批判の検出
     for (const auto& keyword : criticism_keywords_) {
         if (lower_text.find(keyword) != std::string::npos) {
-            return "criticism";
+            return Intent::CRITICISM;
         }
     }
 
     // 質問の検出（疑問符や疑問詞）
-    if (text.find("?") != std::string::npos ||
-        text.find("？") != std::string::npos ||
-        lower_text.find("what") != std::string::npos ||
-        lower_text.find("how") != std::string::npos ||
-        lower_text.find("why") != std::string::npos ||
-        lower_text.find("なぜ") != std::string::npos ||
-        lower_text.find("どう") != std::string::npos ||
-        lower_text.find("何") != std::string::npos) {
-        return "question";
+    const bool has_question_marker =
+        text.find("?") != std::string::npos ||
+        text.find("？") != std::string::npos;
+    const std::vector<std::string> question_markers = { INPUT_ANALYZER_QUESTION_MARKER_KEYWORDS };
+    const bool has_question_keyword = std::any_of(
+        question_markers.begin(), question_markers.end(),
+        [&](const std::string& marker) {
+            return lower_text.find(marker) != std::string::npos;
+        });
+
+    if (has_question_marker || has_question_keyword) {
+        return Intent::QUESTION;
     }
 
     // 挨拶の検出
-    if (lower_text.find("hello") != std::string::npos ||
-        lower_text.find("hi") != std::string::npos ||
-        lower_text.find("こんにちは") != std::string::npos ||
-        lower_text.find("おはよう") != std::string::npos ||
-        lower_text.find("こんばんは") != std::string::npos) {
-        return "greeting";
+    const std::vector<std::string> greeting_markers = { INPUT_ANALYZER_GREETING_KEYWORDS };
+    const bool has_greeting = std::any_of(
+        greeting_markers.begin(), greeting_markers.end(),
+        [&](const std::string& marker) {
+            return lower_text.find(marker) != std::string::npos;
+        });
+
+    if (has_greeting) {
+        return Intent::GREETING;
     }
 
-    return "casual"; // その他の雑談
+    return Intent::CASUAL; // その他の雑談
 }
 
-std::string InputAnalyzer::evaluate_ai_attitude(const std::string& text) {
+EvaluationToAI InputAnalyzer::evaluate_ai_attitude(const std::string& text) {
     std::string lower_text = text;
     std::transform(lower_text.begin(), lower_text.end(), lower_text.begin(), ::tolower);
 
@@ -503,12 +594,12 @@ std::string InputAnalyzer::evaluate_ai_attitude(const std::string& text) {
     }
 
     if (positive_count > negative_count) {
-        return "positive";
+        return EvaluationToAI::POSITIVE;
     } else if (negative_count > positive_count) {
-        return "negative";
+        return EvaluationToAI::NEGATIVE;
     }
 
-    return "neutral";
+    return EvaluationToAI::NEUTRAL;
 }
 
 std::vector<std::string> InputAnalyzer::extract_keywords(const std::string& text) {
@@ -523,7 +614,7 @@ std::vector<std::string> InputAnalyzer::extract_keywords(const std::string& text
             [](char c) { return std::ispunct(c); }), word.end());
         
         // 長さが3文字以上の単語のみを抽出
-        if (word.length() >= 3) {
+        if (word.length() >= INPUT_ANALYZER_MIN_KEYWORD_LENGTH) {
             keywords.push_back(word);
         }
     }
@@ -540,5 +631,5 @@ std::string InputAnalyzer::extract_topic(const std::string& text) {
         return keywords[0]; // 最初のキーワードをトピックとする
     }
     
-    return "general"; // デフォルト
+    return INPUT_ANALYZER_DEFAULT_TOPIC; // デフォルト
 }

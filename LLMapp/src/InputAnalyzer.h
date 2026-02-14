@@ -9,15 +9,48 @@ class LLMInference;
 struct ConversationTurn;
 
 /**
+ * @brief 発言意図の種類
+ */
+enum class Intent {
+    UNKNOWN,
+    PRAISE,
+    CRITICISM,
+    QUESTION,
+    GREETING,
+    CASUAL
+};
+
+/**
+ * @brief AIへの評価の種類
+ */
+enum class EvaluationToAI {
+    UNKNOWN,
+    POSITIVE,
+    NEUTRAL,
+    NEGATIVE
+};
+
+std::string intent_to_string(Intent intent);
+Intent intent_from_string(const std::string& intent);
+std::string evaluation_to_string(EvaluationToAI evaluation);
+EvaluationToAI evaluation_from_string(const std::string& evaluation);
+
+/**
  * @brief ユーザー発言の構造化データ
  */
 struct AnalyzedInput {
     std::string raw_text;              // 元の発言
     std::string topic;                 // トピック（何について話しているか）
-    std::string intent;                // 意図（質問/賞賛/批判/雑談など）
-    std::string evaluation_to_ai;      // AIへの評価（positive/neutral/negative）
+    Intent intent;                     // 意図（質問/賞賛/批判/雑談など）
+    EvaluationToAI evaluation_to_ai;   // AIへの評価（positive/neutral/negative）
     std::vector<std::string> keywords; // 抽出されたキーワード
     double sentiment_score;            // 感情スコア（-1.0 ~ 1.0）
+
+    AnalyzedInput()
+        : intent(Intent::UNKNOWN)
+        , evaluation_to_ai(EvaluationToAI::UNKNOWN)
+        , sentiment_score(0.0)
+    {}
 };
 
 /**
@@ -83,14 +116,14 @@ public:
      * @param text 分析する文章
      * @return 意図（"question", "praise", "criticism", "casual", "unknown"）
      */
-    std::string classify_intent(const std::string& text);
+    Intent classify_intent(const std::string& text);
 
     /**
      * @brief AIへの評価を判定
      * @param text 分析する文章
      * @return 評価（"positive", "neutral", "negative"）
      */
-    std::string evaluate_ai_attitude(const std::string& text);
+    EvaluationToAI evaluate_ai_attitude(const std::string& text);
 
     /**
      * @brief キーワード抽出（簡易実装）
