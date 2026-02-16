@@ -494,7 +494,8 @@ AnalyzedInput InputAnalyzer::parse_llm_response(
 
 double InputAnalyzer::calculate_sentiment(const std::string& text) {
     std::string lower_text = text;
-    std::transform(lower_text.begin(), lower_text.end(), lower_text.begin(), ::tolower);
+    std::transform(lower_text.begin(), lower_text.end(), lower_text.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
     int positive_count = 0;
     int negative_count = 0;
@@ -526,7 +527,8 @@ double InputAnalyzer::calculate_sentiment(const std::string& text) {
 
 Intent InputAnalyzer::classify_intent(const std::string& text) {
     std::string lower_text = text;
-    std::transform(lower_text.begin(), lower_text.end(), lower_text.begin(), ::tolower);
+    std::transform(lower_text.begin(), lower_text.end(), lower_text.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
     // 賞賛の検出
     for (const auto& keyword : praise_keywords_) {
@@ -574,7 +576,8 @@ Intent InputAnalyzer::classify_intent(const std::string& text) {
 
 EvaluationToAI InputAnalyzer::evaluate_ai_attitude(const std::string& text) {
     std::string lower_text = text;
-    std::transform(lower_text.begin(), lower_text.end(), lower_text.begin(), ::tolower);
+    std::transform(lower_text.begin(), lower_text.end(), lower_text.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
     int positive_count = 0;
     int negative_count = 0;
@@ -611,7 +614,7 @@ std::vector<std::string> InputAnalyzer::extract_keywords(const std::string& text
     while (iss >> word) {
         // 記号を除去
         word.erase(std::remove_if(word.begin(), word.end(), 
-            [](char c) { return std::ispunct(c); }), word.end());
+            [](unsigned char c) { return std::ispunct(c) != 0; }), word.end());
         
         // 長さが3文字以上の単語のみを抽出
         if (word.length() >= INPUT_ANALYZER_MIN_KEYWORD_LENGTH) {

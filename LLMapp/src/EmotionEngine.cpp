@@ -197,6 +197,23 @@ void EmotionEngine::set_constitution(const PersonalityConstitution& constitution
     current_state_.overall_valence = constitution_.baseline_valence;
 }
 
+void EmotionEngine::set_current_state(const EmotionState& state) {
+    current_state_ = state;
+
+    // 欠落キーの補完
+    current_state_.values[BasicEmotion::JOY] = std::max(0.0, std::min(1.0, current_state_.values[BasicEmotion::JOY]));
+    current_state_.values[BasicEmotion::TRUST] = std::max(0.0, std::min(1.0, current_state_.values[BasicEmotion::TRUST]));
+    current_state_.values[BasicEmotion::FEAR] = std::max(0.0, std::min(1.0, current_state_.values[BasicEmotion::FEAR]));
+    current_state_.values[BasicEmotion::SURPRISE] = std::max(0.0, std::min(1.0, current_state_.values[BasicEmotion::SURPRISE]));
+    current_state_.values[BasicEmotion::SADNESS] = std::max(0.0, std::min(1.0, current_state_.values[BasicEmotion::SADNESS]));
+    current_state_.values[BasicEmotion::DISGUST] = std::max(0.0, std::min(1.0, current_state_.values[BasicEmotion::DISGUST]));
+    current_state_.values[BasicEmotion::ANGER] = std::max(0.0, std::min(1.0, current_state_.values[BasicEmotion::ANGER]));
+    current_state_.values[BasicEmotion::ANTICIPATION] = std::max(0.0, std::min(1.0, current_state_.values[BasicEmotion::ANTICIPATION]));
+
+    current_state_.overall_valence = std::max(-1.0, std::min(1.0, current_state_.overall_valence));
+    current_state_.arousal = std::max(0.0, std::min(1.0, current_state_.arousal));
+}
+
 void EmotionEngine::reset() {
     current_state_ = EmotionState();
     current_state_.overall_valence = constitution_.baseline_valence;

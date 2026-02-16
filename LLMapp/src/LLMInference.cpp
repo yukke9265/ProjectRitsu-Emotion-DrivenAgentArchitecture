@@ -4,9 +4,6 @@
 #include <cctype>
 #include <sstream>
 
-// 前方宣言
-static std::string cleanup_output(const std::string& raw_output);
-
 LLMInference::LLMInference(
     const std::string& model_path,
     int n_gpu_layers,
@@ -76,6 +73,10 @@ bool LLMInference::initialize() {
 }
 
 std::string LLMInference::infer(const std::string& prompt) {
+    return cleanup_response(infer_raw(prompt));
+}
+
+std::string LLMInference::infer_raw(const std::string& prompt) {
     if (!initialized_) {
         last_error_ = "LLMがまだ初期化されていません。initialize()を呼び出してください。";
         return "";
@@ -141,7 +142,7 @@ std::string LLMInference::infer(const std::string& prompt) {
 
         //printf("\n[debug]\n %s\n[debug_end]\n", result.c_str());
 
-        return cleanup_output(result);
+        return result;
     } catch (const std::exception& e) {
         last_error_ = std::string("推論中にエラーが発生しました: ") + e.what();
         return "";
@@ -149,7 +150,7 @@ std::string LLMInference::infer(const std::string& prompt) {
 }
 
 // 制御トークンと不要な文字列をクリーンアップするヘルパー関数
-static std::string cleanup_output(const std::string& raw_output) {
+std::string LLMInference::cleanup_response(const std::string& raw_output) {
     std::string result = raw_output;
 
     // 改行コードを統一

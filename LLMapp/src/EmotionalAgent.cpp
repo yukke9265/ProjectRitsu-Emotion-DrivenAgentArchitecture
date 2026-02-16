@@ -1,7 +1,69 @@
 ﻿#include "EmotionalAgent.h"
+#include "AgentStatePersistence.h"
 #include "Config.h"
 #include <algorithm> // 追加
+#include <cctype>
 #include <iostream>
+#include <sstream>
+#include <utility>
+
+namespace {
+std::string trim_and_lower_copy(std::string text) {
+    auto is_ws = [](unsigned char c) { return std::isspace(c) != 0; };
+
+    auto first = std::find_if_not(text.begin(), text.end(), is_ws);
+    if (first == text.end()) {
+        return "";
+    }
+    auto last = std::find_if_not(text.rbegin(), text.rend(), is_ws).base();
+    text = std::string(first, last);
+
+    if (text.size() >= 2) {
+        const char front = text.front();
+        const char back = text.back();
+        const bool double_quoted = (front == '"' && back == '"');
+        const bool single_quoted = (front == '\'' && back == '\'');
+        if (double_quoted || single_quoted) {
+            text = text.substr(1, text.size() - 2);
+            first = std::find_if_not(text.begin(), text.end(), is_ws);
+            if (first == text.end()) {
+                return "";
+            }
+            last = std::find_if_not(text.rbegin(), text.rend(), is_ws).base();
+            text = std::string(first, last);
+        }
+    }
+
+    std::transform(text.begin(), text.end(), text.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    return text;
+}
+
+std::string normalize_control_command(const std::string& input) {
+    const std::string token = trim_and_lower_copy(input);
+
+    if (token == "exit" || token == "quit" || token == "debug" ||
+        token == "emotion" || token == "history" || token == "reset") {
+        return token;
+    }
+
+    std::string alpha_only;
+    alpha_only.reserve(token.size());
+    for (unsigned char c : token) {
+        if (std::isalpha(c)) {
+            alpha_only.push_back(static_cast<char>(std::tolower(c)));
+        }
+    }
+
+    if (alpha_only == "exit" || alpha_only == "quit" || alpha_only == "debug" ||
+        alpha_only == "emotion" || alpha_only == "history" || alpha_only == "reset") {
+        return alpha_only;
+    }
+
+    return token;
+}
+}
 
 EmotionalAgent::EmotionalAgent(
     const std::string& model_path,
@@ -9,7 +71,10 @@ EmotionalAgent::EmotionalAgent(
     : model_path_(model_path)
     , initialized_(false)
     , last_error_("")
-    , debug_mode_(false) {
+    , debug_mode_(false)
+    , tool_use_enabled_(true)
+    , max_tool_iterations_(3)
+    , tool_executor_(nullptr) {
     
     // モジュールの初期化
     input_analyzer_ = std::make_unique<InputAnalyzer>();
@@ -57,7 +122,46 @@ std::string EmotionalAgent::process(const std::string& user_input) {
         return "[エラー] エージェントが初期化されていません。";
     }
 
+    const std::string command = normalize_control_command(user_input);
+    const bool has_meaningful_input = !trim_and_lower_copy(user_input).empty();
+
+    if (command == "exit" || command == "quit" ||
+        command == "debug" || command == "emotion" ||
+        command == "history" || command == "reset") {
+        return "";
+    }
+
+    // 空入力は「初回起動の挨拶生成」時のみ許可。
+    // 既に会話履歴がある場合は no-op として扱い、解析/記憶更新を行わない。
+    if (!has_meaningful_input &&
+        memory_controller_ &&
+        memory_controller_->get_short_term_size() > 0) {
+        return "";
+    }
+
     try {
+        // ターン開始時に構造化システムログをクリア
+        clear_system_log_sections();
+
+        const bool is_initial_greeting_turn =
+            !has_meaningful_input &&
+            memory_controller_ &&
+            memory_controller_->get_short_term_size() == 0;
+
+        if (is_initial_greeting_turn) {
+            add_system_log_section(
+                "Startup",
+                "初回起動ターンです。ユーザー入力はありません。最初の挨拶を自然に1回だけ生成してください。"
+            );
+        }
+
+        if (tool_use_enabled_ && tool_executor_) {
+            const auto tools = tool_executor_->list_tools();
+            if (!tools.empty()) {
+                add_system_log_section("Tool Interface", ToolIOProtocol::build_tool_guide(tools));
+            }
+        }
+
         if (debug_mode_) {
             std::cout << "\n" << std::string(60, '=') << "\n";
             std::cout << "  デバッグモード: 処理開始\n";
@@ -73,24 +177,38 @@ std::string EmotionalAgent::process(const std::string& user_input) {
         }
         
         const auto& conversation_history = memory_controller_->get_short_term_history();
-        
-        if (debug_mode_ && !conversation_history.empty()) {
-            std::cout << "会話履歴（" << conversation_history.size() << "ターン）:\n";
-            int count = 0;
-            for (const auto& turn : conversation_history) {
-                std::cout << "  [" << ++count << "] " << turn.role << ": " 
-                          << (turn.content.length() > 60 ? turn.content.substr(0, 60) + "..." : turn.content) << "\n";
+        AnalyzedInput analyzed;
+
+        if (is_initial_greeting_turn) {
+            analyzed.raw_text = "";
+            analyzed.topic = "session_start";
+            analyzed.intent = Intent::GREETING;
+            analyzed.evaluation_to_ai = EvaluationToAI::NEUTRAL;
+            analyzed.sentiment_score = 0.2;
+            analyzed.keywords = { "起動", "初回", "挨拶" };
+
+            if (debug_mode_) {
+                std::cout << "会話履歴（0ターン）: 初回起動のため入力解析をスキップ\n\n";
             }
-            std::cout << "\n";
+        } else {
+            if (debug_mode_ && !conversation_history.empty()) {
+                std::cout << "会話履歴（" << conversation_history.size() << "ターン）:\n";
+                int count = 0;
+                for (const auto& turn : conversation_history) {
+                    std::cout << "  [" << ++count << "] " << turn.role << ": "
+                              << (turn.content.length() > 60 ? turn.content.substr(0, 60) + "..." : turn.content) << "\n";
+                }
+                std::cout << "\n";
+            }
+
+            analyzed = input_analyzer_->analyze(user_input, &conversation_history);
         }
-        
-        AnalyzedInput analyzed = input_analyzer_->analyze(user_input, &conversation_history);
         
         if (debug_mode_) {
             std::cout << "解析結果:\n";
             std::cout << "  Topic: " << analyzed.topic << "\n";
-            std::cout << "  Intent: " << analyzed.intent << "\n";
-            std::cout << "  Evaluation: " << analyzed.evaluation_to_ai << "\n";
+            std::cout << "  Intent: " << intent_to_string(analyzed.intent) << "\n";
+            std::cout << "  Evaluation: " << evaluation_to_string(analyzed.evaluation_to_ai) << "\n";
             std::cout << "  Sentiment: " << analyzed.sentiment_score << "\n";
             std::cout << "  Keywords: ";
             for (size_t i = 0; i < analyzed.keywords.size(); ++i) {
@@ -119,7 +237,9 @@ std::string EmotionalAgent::process(const std::string& user_input) {
             std::cout << "ユーザー入力を短期メモリに追加\n\n";
         }
         
-        memory_controller_->add_to_short_term("user", user_input);
+        if (has_meaningful_input) {
+            memory_controller_->add_to_short_term("user", user_input);
+        }
 
         // Step 4: プロンプト生成
         if (debug_mode_) {
@@ -144,8 +264,72 @@ std::string EmotionalAgent::process(const std::string& user_input) {
             std::cout << "--- [Step 5] LLM推論 ---\n";
             std::cout << "LLMに推論を要求中...\n";
         }
-        
-        std::string response = llm_inference_->infer(final_prompt);
+
+        std::string response;
+        std::string working_prompt = final_prompt;
+        std::string tool_feedback_blocks;
+
+        for (int tool_iter = 0; tool_iter <= max_tool_iterations_; ++tool_iter) {
+            const std::string raw_output = llm_inference_->infer_raw(working_prompt);
+
+            ToolCall tool_call;
+            const bool has_tool_call =
+                tool_use_enabled_ &&
+                tool_executor_ &&
+                ToolIOProtocol::try_parse_tool_call(raw_output, tool_call);
+
+            if (!has_tool_call) {
+                response = LLMInference::cleanup_response(raw_output);
+                break;
+            }
+
+            if (debug_mode_) {
+                std::cout << "[ToolCall] name=" << tool_call.name << "\n";
+                std::cout << "[ToolCall] input=" << tool_call.input << "\n";
+            }
+
+            ToolResult tool_result;
+
+            if (tool_iter >= max_tool_iterations_) {
+                tool_result.success = false;
+                tool_result.error = "tool_iteration_limit_exceeded";
+            }
+            else {
+                tool_result = tool_executor_->execute(tool_call);
+            }
+
+            const std::string result_block = ToolIOProtocol::build_tool_result_block(tool_call, tool_result);
+
+            if (!tool_feedback_blocks.empty()) {
+                tool_feedback_blocks += "\n\n";
+            }
+            tool_feedback_blocks += result_block;
+
+            if (debug_mode_) {
+                std::cout << "[ToolResult] success=" << (tool_result.success ? "true" : "false") << "\n";
+                if (tool_result.success) {
+                    std::cout << "[ToolResult] output=" << tool_result.output << "\n";
+                }
+                else {
+                    std::cout << "[ToolResult] error=" << tool_result.error << "\n";
+                }
+            }
+
+            working_prompt = final_prompt;
+            working_prompt += "\n\n# ツール実行ログ\n\n";
+            working_prompt += tool_feedback_blocks;
+            working_prompt += "\n\n";
+
+            if (tool_iter >= max_tool_iterations_) {
+                working_prompt += "これ以上ツールは呼ばず、取得済み情報のみで最終応答してください。\n";
+                response = llm_inference_->infer(working_prompt);
+                break;
+            }
+
+            working_prompt +=
+                "上記の tool_result を読み、必要なら追加で tool_call を出力してください。"
+                "不要なら通常の最終応答を返してください。\n";
+        }
         
         if (debug_mode_) {
             std::cout << "LLM応答:\n";
@@ -212,10 +396,62 @@ void EmotionalAgent::set_system_prompt(const std::string& system_prompt) {
     }
 }
 
+void EmotionalAgent::add_system_log_section(
+    const std::string& section_name,
+    const std::string& content) {
+
+    if (prompt_orchestrator_) {
+        prompt_orchestrator_->add_system_log_section(section_name, content);
+    }
+}
+
+void EmotionalAgent::clear_system_log_sections() {
+    if (prompt_orchestrator_) {
+        prompt_orchestrator_->clear_system_log_sections();
+    }
+}
+
 void EmotionalAgent::set_constitution(const PersonalityConstitution& constitution) {
     if (emotion_engine_) {
         emotion_engine_->set_constitution(constitution);
     }
+}
+
+void EmotionalAgent::set_tool_executor(IToolExecutor* executor) {
+    tool_executor_ = executor;
+}
+
+void EmotionalAgent::register_tool(const ToolSpec& spec, ToolRegistryExecutor::ToolHandler handler) {
+    if (!owned_tool_registry_) {
+        owned_tool_registry_ = std::make_unique<ToolRegistryExecutor>();
+    }
+
+    owned_tool_registry_->register_tool(spec, std::move(handler));
+
+    // 外部実行器が未設定なら、内蔵レジストリを利用する
+    if (!tool_executor_) {
+        tool_executor_ = owned_tool_registry_.get();
+    }
+}
+
+void EmotionalAgent::register_tool(
+    const ToolSpec& spec,
+    const ToolObjectSchema& schema,
+    ToolRegistryExecutor::ToolHandler handler) {
+
+    if (!owned_tool_registry_) {
+        owned_tool_registry_ = std::make_unique<ToolRegistryExecutor>();
+    }
+
+    owned_tool_registry_->register_tool(spec, schema, std::move(handler));
+
+    if (!tool_executor_) {
+        tool_executor_ = owned_tool_registry_.get();
+    }
+}
+
+void EmotionalAgent::set_max_tool_iterations(int max_iterations) {
+    max_tool_iterations_ = std::max(0, max_iterations);
 }
 
 void EmotionalAgent::clear_history() {
@@ -232,6 +468,58 @@ void EmotionalAgent::reset() {
         memory_controller_->clear_short_term();
         memory_controller_->clear_long_term();
     }
+}
+
+bool EmotionalAgent::save_state_to_file(const std::string& file_path) const {
+    if (!emotion_engine_ || !memory_controller_ || !prompt_orchestrator_) {
+        return false;
+    }
+
+    AgentPersistentState state;
+    state.constitution = emotion_engine_->get_constitution();
+    state.emotion_state = emotion_engine_->get_current_state();
+
+    state.short_term_limit = memory_controller_->get_short_term_limit();
+    state.short_term_memory = memory_controller_->get_short_term_history();
+    state.long_term_memory = memory_controller_->get_all_episodes();
+
+    state.system_prompt = prompt_orchestrator_->get_system_prompt();
+    state.tone_instruction = prompt_orchestrator_->get_tone_instruction();
+    state.max_episodes = prompt_orchestrator_->get_max_episodes();
+    state.short_term_turns = prompt_orchestrator_->get_short_term_turns();
+    state.system_log_sections = prompt_orchestrator_->get_system_log_sections();
+
+    state.debug_mode = debug_mode_;
+
+    return AgentStatePersistence::save_to_file(file_path, state);
+}
+
+bool EmotionalAgent::load_state_from_file(const std::string& file_path) {
+    if (!emotion_engine_ || !memory_controller_ || !prompt_orchestrator_) {
+        return false;
+    }
+
+    AgentPersistentState state;
+    if (!AgentStatePersistence::load_from_file(file_path, state)) {
+        return false;
+    }
+
+    emotion_engine_->set_constitution(state.constitution);
+    emotion_engine_->set_current_state(state.emotion_state);
+
+    memory_controller_->set_short_term_limit(state.short_term_limit);
+    memory_controller_->set_short_term_history(state.short_term_memory);
+    memory_controller_->set_long_term_memory(state.long_term_memory);
+
+    prompt_orchestrator_->set_system_prompt(state.system_prompt);
+    prompt_orchestrator_->set_tone_instruction(state.tone_instruction);
+    prompt_orchestrator_->set_max_episodes(state.max_episodes);
+    prompt_orchestrator_->set_short_term_turns(state.short_term_turns);
+    prompt_orchestrator_->set_system_log_sections(state.system_log_sections);
+
+    set_debug_mode(state.debug_mode);
+
+    return true;
 }
 
 void EmotionalAgent::print_debug_info() const {
@@ -264,9 +552,72 @@ void EmotionalAgent::consolidate_memories() {
         std::sort(keywords.begin(), keywords.end());
         keywords.erase(std::unique(keywords.begin(), keywords.end()), keywords.end());
 
+        // 直近会話をLLMで要約（失敗時は空文字 → MemoryController側でフォールバック）
+        std::string llm_summary = summarize_recent_conversation_with_llm();
+
         // 記憶を統合
-        memory_controller_->consolidate_memory(emotion_desc, keywords);
+        memory_controller_->consolidate_memory(emotion_desc, keywords, llm_summary);
     }
+}
+
+std::string EmotionalAgent::summarize_recent_conversation_with_llm() const {
+    if (!llm_inference_ || !memory_controller_) {
+        return "";
+    }
+
+    const auto& history = memory_controller_->get_short_term_history();
+    if (history.empty()) {
+        return "";
+    }
+
+    std::ostringstream history_text;
+    for (const auto& turn : history) {
+        history_text << turn.role << ": " << turn.content << "\n";
+    }
+
+    std::ostringstream prompt;
+    prompt << "以下はユーザーとAIの会話履歴です。\n";
+    prompt << "会話の要点を日本語で1〜2文、120文字以内で要約してください。\n";
+    prompt << "出力は要約文のみ。前置きや箇条書き、見出し、説明は不要です。\n\n";
+    prompt << "会話履歴:\n";
+    prompt << history_text.str();
+    prompt << "\n要約:";
+
+    std::string summary = llm_inference_->infer(prompt.str());
+    if (summary.empty()) {
+        return "";
+    }
+
+    auto trim = [](std::string value) {
+        const char* whitespace = " \t\r\n";
+        const auto first = value.find_first_not_of(whitespace);
+        if (first == std::string::npos) {
+            return std::string();
+        }
+        const auto last = value.find_last_not_of(whitespace);
+        value = value.substr(first, last - first + 1);
+        return value;
+    };
+
+    summary = trim(summary);
+
+    const std::vector<std::string> prefixes = {
+        "要約:", "summary:", "Summary:", "応答:", "回答:"
+    };
+
+    for (const auto& prefix : prefixes) {
+        if (summary.rfind(prefix, 0) == 0) {
+            summary = trim(summary.substr(prefix.length()));
+            break;
+        }
+    }
+
+    auto newline_pos = summary.find('\n');
+    if (newline_pos != std::string::npos) {
+        summary = trim(summary.substr(0, newline_pos));
+    }
+
+    return summary;
 }
 
 void EmotionalAgent::set_debug_mode(bool enable) {

@@ -1,6 +1,6 @@
 # 感情駆動型AIエージェント・アーキテクチャ
 
-5つのモジュールで構成された感情を持つAIエージェントの実装です。
+7つのモジュールで構成された感情を持つAIエージェントの実装です。
 
 ## モジュール構成
 
@@ -93,13 +93,52 @@
 ---
 
 ### ⑤ LLMInference（文章生成エンジン）
+
 **ファイル**: `src/LLMInference.h`, `src/LLMInference.cpp`（既存）
 
 実際にユーザーへの返答を生成する高機能LLMです。
 
 **機能**:
+
 - llama.cppを使用したローカルLLM推論
 - 感情が注入されたプロンプトに従った応答生成
+- 生出力推論 `infer_raw()`（ツール呼び出しタグ検出に利用）
+- 出力後処理 `cleanup_response()`
+
+---
+
+### ⑥ ToolIO（ツール入出力プロトコル）
+
+**ファイル**: `src/ToolIO.h`, `src/ToolIO.cpp`
+
+LLMにツールを呼び出させるための汎用インターフェース層です。
+
+**機能**:
+
+- ツール呼び出しプロトコル（`<tool_call> ... </tool_call>`）
+- ツール実行結果プロトコル（`<tool_result> ... </tool_result>`）
+- ツールレジストリ（`ToolRegistryExecutor`）
+- 厳密JSON入力パーサ（`ToolJsonInput`）
+- オブジェクト入力スキーマ検証（必須キー・型・追加キー制御）
+
+**主要メソッド**:
+
+- `ToolIOProtocol::try_parse_tool_call()`: LLM出力からツール呼び出しを抽出
+- `ToolIOProtocol::build_tool_result_block()`: 実行結果を再注入用テキストに整形
+- `ToolRegistryExecutor::register_tool()`: ツール登録（スキーマ有無どちらも対応）
+
+---
+
+### ⑦ ToolSetup（ツール登録セットアップ）
+
+**ファイル**: `src/ToolSetup.h`, `src/ToolSetup.cpp`
+
+`main_emotional.cpp`の肥大化を防ぐため、標準ツール登録を分離したモジュールです。
+
+**機能**:
+
+- `register_default_tools(EmotionalAgent&)` で標準ツール群を一括登録
+- ツール追加時の編集ポイントを一本化
 
 ---
 
@@ -107,10 +146,11 @@
 
 **ファイル**: `src/EmotionalAgent.h`, `src/EmotionalAgent.cpp`
 
-5つのモジュールを統合したエージェントクラスです。
+主要モジュールを統合したエージェントクラスです。
 
 **処理フロー**:
-```
+
+```text
 ユーザー入力
     ↓
 ① InputAnalyzer - 構造化
@@ -121,16 +161,27 @@
     ↓
 ④ PromptOrchestrator - プロンプト生成
     ↓
-⑤ LLMInference - 応答生成
+⑤ LLMInference::infer_raw() - 一次生成
+    ↓
+⑥ ToolIOProtocol::try_parse_tool_call() - ツール呼び出し判定
+    ↓
+⑦ ToolRegistryExecutor::execute() - 必要時のみツール実行
+    ↓
+tool_result を再注入して再推論
+    ↓
+LLMInference::cleanup_response() - 最終整形
     ↓
 出力
 ```
 
 **主要メソッド**:
+
 - `initialize()`: エージェントを初期化
 - `process()`: ユーザー入力を処理して応答を生成
 - `get_emotion_status()`: 現在の感情状態を取得
 - `reset()`: エージェントをリセット
+- `set_tool_executor()`: 外部ツール実行器を注入
+- `register_tool()`: 内蔵レジストリへツール登録（スキーマ付き対応）
 
 ---
 
@@ -171,6 +222,33 @@ std::cout << agent.get_emotion_status() << std::endl;
 - `reset`: エージェントをリセット
 - `quit` / `exit`: 終了
 
+### 3. ツール追加（推奨）
+
+`main_emotional.cpp` ではなく、`src/ToolSetup.cpp` の `register_default_tools()` に追加してください。
+
+1. `agent.register_tool(...)` でツールを登録
+2. JSON入力を使う場合は `ToolObjectSchema` を指定
+3. 必要に応じて `allow_additional_keys = false` で追加キーを禁止
+
+例（概念）:
+
+```cpp
+agent.register_tool(
+    { "sum_numbers", "a,bを加算", "" },
+    ToolObjectSchema{
+        {
+            ToolFieldSchema{ "a", ToolJsonType::NUMBER, true },
+            ToolFieldSchema{ "b", ToolJsonType::NUMBER, true },
+        },
+        false
+    },
+    [](const std::string& input) {
+        // ハンドラ処理
+        return ToolResult{ true, "30", "" };
+    }
+);
+```
+
 ---
 
 ## ビルド方法
@@ -202,11 +280,29 @@ Visual Studio 2022でプロジェクトをビルドしてください。
 - 長期メモリの最大エピソード数: `MemoryController.cpp` 内の定数で調整
 - 記憶の統合頻度: `EmotionalAgent::consolidate_memories()` で制御
 
+### 状態保存（永続化）
+
+`main_emotional.cpp` は起動時に `agent_state.dat` を自動読込し、終了時に現在状態を自動保存します。
+
+保存対象の例:
+
+- 人格憲法（`PersonalityConstitution`）
+- 感情状態（8感情値、valence、arousal、最終更新時刻）
+- 短期/長期記憶
+- プロンプト設定（system prompt、tone instruction、構造化ログ）
+- デバッグ設定
+
+フォーマット運用ポリシー:
+
+- 保存は常に最新版フォーマットで書き込む
+- 読み込みは旧版フォーマットとの後方互換を維持する
+- 新版追加時は既存読み込み経路を削除せず、`switch(version)` にケース追加で拡張する
+
 ---
 
 ## ファイル一覧
 
-```
+```text
 LLMapp/
 ├── main.cpp                        # 従来の単発推論（既存）
 ├── main_emotional.cpp              # 感情駆動型エージェント（新規）
@@ -223,6 +319,10 @@ LLMapp/
     ├── EmotionalAgent.cpp
     ├── LLMInference.h              # LLM推論（既存）
     ├── LLMInference.cpp
+    ├── ToolIO.h                    # ツールI/Oプロトコル・JSONスキーマ検証
+    ├── ToolIO.cpp
+    ├── ToolSetup.h                 # 標準ツール登録（mainから分離）
+    ├── ToolSetup.cpp
     ├── DialogFunctions.h           # ダイアログ関数（既存）
     ├── DialogFunctions.cpp
     ├── PromptManager.h             # レガシー（スタブ）
@@ -233,7 +333,7 @@ LLMapp/
 
 ## 今後の拡張案
 
-1. **より高度な自然言語処理**: 
+1. **より高度な自然言語処理**:
    - トークナイズや形態素解析を活用した高精度なキーワード抽出
 
 2. **ベクトルデータベースの統合**:
@@ -242,8 +342,8 @@ LLMapp/
 3. **感情モデルの拡張**:
    - より複雑な感情モデル（PADモデル等）の導入
 
-4. **永続化**:
-   - 長期記憶をファイルやデータベースに保存
+4. **永続化の高度化**:
+    - 現在の全体状態保存に加えて、差分保存・圧縮・暗号化を導入
 
 5. **マルチモーダル対応**:
    - 画像や音声入力からの感情推定

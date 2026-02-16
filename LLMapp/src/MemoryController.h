@@ -127,10 +127,12 @@ public:
      * @brief 短期メモリから重要なエピソードを抽出して長期メモリに保存
      * @param emotional_state 現在の感情状態の説明
      * @param keywords 関連キーワード
+     * @param summary_override 要約文の上書き（空文字なら内部要約を使用）
      */
     void consolidate_memory(
         const std::string& emotional_state,
-        const std::vector<std::string>& keywords);
+        const std::vector<std::string>& keywords,
+        const std::string& summary_override = "");
 
     // ===== 統計・管理機能 =====
 
@@ -151,6 +153,24 @@ public:
      * @param limit 最大ターン数
      */
     void set_short_term_limit(int limit) { short_term_limit_ = limit; }
+
+    /**
+     * @brief 短期メモリの最大サイズを取得
+     * @return 最大ターン数
+     */
+    int get_short_term_limit() const { return short_term_limit_; }
+
+    /**
+     * @brief 短期メモリ履歴を一括復元
+     * @param history 復元する履歴
+     */
+    void set_short_term_history(const std::deque<ConversationTurn>& history);
+
+    /**
+     * @brief 長期メモリを一括復元
+     * @param episodes 復元するエピソード一覧
+     */
+    void set_long_term_memory(const std::vector<Episode>& episodes);
 
 private:
     std::deque<ConversationTurn> short_term_memory_;  // 短期メモリ（FIFO）

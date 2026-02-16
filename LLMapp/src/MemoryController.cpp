@@ -120,20 +120,49 @@ void MemoryController::clear_long_term() {
     long_term_memory_.clear();
 }
 
+void MemoryController::set_short_term_history(const std::deque<ConversationTurn>& history) {
+    short_term_memory_ = history;
+
+    while (static_cast<int>(short_term_memory_.size()) > short_term_limit_) {
+        short_term_memory_.pop_front();
+    }
+}
+
+void MemoryController::set_long_term_memory(const std::vector<Episode>& episodes) {
+    long_term_memory_ = episodes;
+
+    std::sort(long_term_memory_.begin(), long_term_memory_.end(),
+        [](const Episode& a, const Episode& b) {
+            return a.importance > b.importance;
+        });
+
+    const int max_episodes = 100;
+    if (static_cast<int>(long_term_memory_.size()) > max_episodes) {
+        long_term_memory_.resize(max_episodes);
+    }
+}
+
 void MemoryController::consolidate_memory(
     const std::string& emotional_state,
-    const std::vector<std::string>& keywords) {
+    const std::vector<std::string>& keywords,
+    const std::string& summary_override) {
     
     if (short_term_memory_.empty()) {
         return;
     }
 
-    // 短期メモリから会話を要約
-    std::ostringstream summary;
-    summary << "会話の要約: ";
-    
-    for (const auto& turn : short_term_memory_) {
-        summary << turn.role << "の発言 / ";
+    std::string summary_text = summary_override;
+
+    if (summary_text.empty()) {
+        // 短期メモリから会話を要約（フォールバック）
+        std::ostringstream summary;
+        summary << "会話の要約: ";
+        
+        for (const auto& turn : short_term_memory_) {
+            summary << turn.role << "の発言 / ";
+        }
+
+        summary_text = summary.str();
     }
 
     // 感情タグを判定
@@ -154,7 +183,7 @@ void MemoryController::consolidate_memory(
         has_strong_emotion);
 
     // エピソードを作成
-    Episode episode(summary.str(), emotional_tag, importance);
+    Episode episode(summary_text, emotional_tag, importance);
     episode.keywords = keywords;
 
     // 長期メモリに追加

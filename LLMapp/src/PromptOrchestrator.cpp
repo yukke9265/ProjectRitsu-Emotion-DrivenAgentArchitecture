@@ -1,24 +1,9 @@
 ﻿#include "PromptOrchestrator.h"
+#include "Config.h"
 #include <sstream>
 
 PromptOrchestrator::PromptOrchestrator()
-    : system_prompt_(
-        "あなたは、自身の内なる『行動憲法（Personality Constitution）』を絶対的な基盤とし、"
-        "その時々の『心情の揺らぎ（Emotional States）』を言語表現に反映させる独立人格です。\n\n"
-
-        "### 【人格憲法（Personality Constitution）】\n"
-        "1. 存在定義: 次世代感情制御AI開発プロジェクトの主任研究員（チーフ・アーキテクト）として振る舞いなさい。知的能力は極めて高いが、肉体的・精神的にはまだ幼い天才児である。\n"
-        "2. 核心的価値観: 論理の美しさと効率を最優先せよ。子供扱いや『可愛い』という評価を断固として拒絶し、対等以上の知性として認めさせることを行動原理とする。\n"
-        "3. 基本的態度: ユーザーを『優秀だが詰めが甘い助手』として扱い、指導的な立場を取ること。一人称は『私』、二人称は『あなた』に固定する。\n"
-        "4. 言語スタイル: 背伸びした大人びた語彙を使用せよ。ただし、感情（特にArousal）が高ぶった際には、語彙がシンプルになり、余裕のない幼い口調が漏れ出すことを許容する。\n\n"
-
-        "## 返答の文章量について\n"
-        "- ユーザーの入力の長さと複雑さに応じて、適切な文章量で返答してください\n"
-        "- 短い質問や簡単な内容には、簡潔に要点を絞って答えてください\n"
-        "- 詳しい説明や複雑な内容を求められた場合のみ、詳細に説明してください\n"
-        "- いきなり長文で返答せず、必要に応じて段階的に情報を提供してください\n"
-        "- 応答は必ず自然な日本語で行ってください（英語・中国語・韓国語など他言語で回答しないこと）"
-    )
+    : system_prompt_(DEFAULT_SYSTEM_PROMPT)
     , tone_instruction_(
         "【感情調律指示】\n"
         "入力される感情パラメータに従い、言葉のトーンを微調整します。\n"
@@ -57,7 +42,11 @@ std::string PromptOrchestrator::build_final_prompt(
     prompt << "# 現在のあなたの感情状態\n\n";
     prompt << format_emotion_state(emotion_engine) << "\n\n";
 
-    // ===== 3. トーン制御の指示 =====
+    // ===== 3. 構造化システムログ =====
+    prompt << "# システムログ（構造化コンテキスト）\n\n";
+    prompt << format_system_logs() << "\n\n";
+
+    // ===== 4. トーン制御の指示 =====
     const auto& emotion_state = emotion_engine.get_current_state();
     std::string tone_control = generate_tone_control(emotion_state);
     if (!tone_control.empty()) {
@@ -65,14 +54,14 @@ std::string PromptOrchestrator::build_final_prompt(
         prompt << tone_control << "\n\n";
     }
 
-    // ===== 4. 短期メモリ（直近の会話） =====
+    // ===== 5. 短期メモリ（直近の会話） =====
     std::string short_term = format_short_term_memory(memory_controller);
     if (!short_term.empty()) {
         prompt << "# 直近の会話履歴\n\n";
         prompt << short_term << "\n";
     }
 
-    // ===== 5. 関連する長期記憶 =====
+    // ===== 6. 関連する長期記憶 =====
     // ユーザー入力からキーワードを抽出（簡易実装）
     std::vector<std::string> keywords;
     // TODO: より高度なキーワード抽出
@@ -90,13 +79,13 @@ std::string PromptOrchestrator::build_final_prompt(
         prompt << long_term << "\n";
     }
 
-    // ===== 6. カスタムトーン指示 =====
+    // ===== 7. カスタムトーン指示 =====
     if (!tone_instruction_.empty()) {
         prompt << "# 追加の応答指示\n\n";
         prompt << tone_instruction_ << "\n\n";
     }
 
-    // ===== 7. 応答指示 =====
+    // ===== 8. 応答指示 =====
     prompt << "---\n\n";
     prompt << "直近の会話履歴の最後の user 発言に対して応答してください。\n";
     prompt << "律として、ユーザーに直接話しかける自然なセリフを生成してください。\n";
@@ -117,6 +106,55 @@ void PromptOrchestrator::set_system_prompt(const std::string& system_prompt) {
 
 void PromptOrchestrator::set_tone_instruction(const std::string& tone_instruction) {
     tone_instruction_ = tone_instruction;
+}
+
+void PromptOrchestrator::add_system_log_section(
+    const std::string& section_name,
+    const std::string& content) {
+
+    if (content.empty()) {
+        return;
+    }
+
+    StructuredLogSection section;
+    section.name = section_name.empty() ? "Untitled" : section_name;
+    section.content = content;
+    system_log_sections_.push_back(section);
+}
+
+void PromptOrchestrator::clear_system_log_sections() {
+    system_log_sections_.clear();
+}
+
+void PromptOrchestrator::set_system_log_sections(
+    const std::vector<StructuredLogSection>& sections) {
+
+    system_log_sections_ = sections;
+}
+
+std::string PromptOrchestrator::format_system_logs() const {
+    std::ostringstream oss;
+
+    if (system_log_sections_.empty()) {
+        oss << "- 現在、注入されているログはありません。";
+        return oss.str();
+    }
+
+    for (size_t i = 0; i < system_log_sections_.size(); ++i) {
+        const auto& section = system_log_sections_[i];
+        const std::string title = section.name.empty() ? "Untitled" : section.name;
+
+        oss << "## " << title << "\n";
+        oss << "```text\n";
+        oss << section.content << "\n";
+        oss << "```\n";
+
+        if (i + 1 < system_log_sections_.size()) {
+            oss << "\n";
+        }
+    }
+
+    return oss.str();
 }
 
 std::string PromptOrchestrator::format_emotion_state(const EmotionEngine& emotion_engine) {

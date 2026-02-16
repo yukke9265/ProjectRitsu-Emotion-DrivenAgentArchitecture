@@ -35,14 +35,30 @@
 5. **LLMInference** (`src/LLMInference.{h,cpp}`)
    - llama.cppラッパー
    - ステートフル推論（KVキャッシュ保持）とステートレス推論
+   - 生出力推論 `infer_raw()`（ツール呼び出しタグの検出向け）
+   - 出力後処理 `cleanup_response()`
    - GGUF形式モデルのサポート
+
+### ツールI/Oモジュール（追加実装）
+
+6. **ToolIO** (`src/ToolIO.{h,cpp}`)
+   - LLMのツール呼び出しプロトコル定義（`<tool_call>...</tool_call>`）
+   - ツール実行結果プロトコル定義（`<tool_result>...</tool_result>`）
+   - ツールレジストリ（`ToolRegistryExecutor`）
+   - 厳密JSONパーサ（`ToolJsonInput`）
+   - オブジェクト入力スキーマ検証（必須キー・型・追加キー制御）
+
+7. **ToolSetup** (`src/ToolSetup.{h,cpp}`)
+   - `main_emotional.cpp` から分離した標準ツール登録処理
+   - `register_default_tools(EmotionalAgent&)` でツール群を一括登録
 
 ### 統合クラス
 
 - **EmotionalAgent** (`src/EmotionalAgent.{h,cpp}`)
-  - 上記5モジュールを統合
+   - 上記主要モジュールを統合
   - メインの対話インターフェース
   - `process(user_input)` で入力を処理し応答を生成
+   - ツール実行器の注入/内蔵登録APIを提供（`set_tool_executor`, `register_tool`）
 
 ## プロジェクト構造
 
@@ -62,6 +78,8 @@ WS/
 │       ├── MemoryController.*   # 記憶管理
 │       ├── PromptOrchestrator.* # プロンプト生成
 │       ├── LLMInference.*       # LLM推論
+│       ├── ToolIO.*             # ツールI/Oプロトコル・実行・JSONスキーマ検証
+│       ├── ToolSetup.*          # 標準ツール登録（mainから分離）
 │       └── DialogFunctions.*    # ダイアログユーティリティ
 ├── external/
 │   └── llama.cpp/               # llama.cpp ライブラリ（サブモジュール）
@@ -129,7 +147,11 @@ user_input → EmotionalAgent::process()
           → EmotionEngine（感情更新）
           → MemoryController（記憶追加・検索）
           → PromptOrchestrator（プロンプト生成）
-          → LLMInference（応答生成）
+          → LLMInference::infer_raw()（一次出力）
+          → ToolIOProtocol::try_parse_tool_call()（ツール呼び出し判定）
+          → ToolRegistryExecutor::execute()（必要時のみ）
+          → tool_resultを再注入して再推論
+          → LLMInference::cleanup_response()（最終整形）
           → 応答
 ```
 
@@ -177,6 +199,12 @@ MemoryController::add_to_long_term_memory(episode)
 1. `PersonalityConstitution` 構造体を編集（人格憲法）
 2. `PromptOrchestrator::set_system_prompt()` でカスタムプロンプト設定
 3. `PromptOrchestrator::build_final_prompt()` でフォーマット調整
+
+### ツールを追加する（推奨手順）
+1. `src/ToolSetup.cpp` の `register_default_tools()` に `agent.register_tool(...)` を追加
+2. JSON入力を使う場合は `ToolObjectSchema` を併用して型・必須キーを宣言
+3. 追加キーを禁止したい場合は `allow_additional_keys = false` を設定
+4. `scripts/build_minimal.ps1` でビルド確認
 
 ## デバッグヒント
 

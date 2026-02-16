@@ -112,6 +112,12 @@ public:
     void set_constitution(const PersonalityConstitution& constitution);
 
     /**
+     * @brief 現在の感情状態を設定（永続化復元用）
+     * @param state 復元する感情状態
+     */
+    void set_current_state(const EmotionState& state);
+
+    /**
      * @brief 感情状態をリセット
      */
     void reset();

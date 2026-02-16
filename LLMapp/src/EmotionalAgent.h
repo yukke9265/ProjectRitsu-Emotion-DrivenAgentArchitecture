@@ -5,6 +5,7 @@
 #include "MemoryController.h"
 #include "PromptOrchestrator.h"
 #include "LLMInference.h"
+#include "ToolIO.h"
 #include <string>
 #include <memory>
 
@@ -70,6 +71,18 @@ public:
     void set_system_prompt(const std::string& system_prompt);
 
     /**
+     * @brief システムプロンプトへ挿入する構造化ログを1件追加
+     * @param section_name セクション名
+     * @param content ログ本文
+     */
+    void add_system_log_section(const std::string& section_name, const std::string& content);
+
+    /**
+     * @brief システムプロンプトへ挿入する構造化ログを全てクリア
+     */
+    void clear_system_log_sections();
+
+    /**
      * @brief 人格憲法を設定
      * @param constitution 新しい人格憲法
      */
@@ -80,6 +93,43 @@ public:
      * @param enable trueでデバッグログを出力
      */
     void set_debug_mode(bool enable);
+
+    /**
+     * @brief ツール実行器を設定（非所有ポインタ）
+     *
+     * 使い方:
+     * @code
+     * ToolRegistryExecutor registry;
+     * registry.register_tool(...);
+     * agent.set_tool_executor(&registry);
+     * @endcode
+     */
+    void set_tool_executor(IToolExecutor* executor);
+
+    /**
+     * @brief 内蔵ツールレジストリへツールを追加
+     *
+     * 外部実行器を使わない場合はこのAPIだけで登録可能。
+     */
+    void register_tool(const ToolSpec& spec, ToolRegistryExecutor::ToolHandler handler);
+
+    /**
+     * @brief スキーマ付きで内蔵ツールを登録
+     */
+    void register_tool(
+        const ToolSpec& spec,
+        const ToolObjectSchema& schema,
+        ToolRegistryExecutor::ToolHandler handler);
+
+    /**
+     * @brief LLMによるツール利用を有効/無効化
+     */
+    void set_tool_use_enabled(bool enable) { tool_use_enabled_ = enable; }
+
+    /**
+     * @brief 1ターン内の最大ツール呼び出し回数を設定
+     */
+    void set_max_tool_iterations(int max_iterations);
 
     /**
      * @brief デバッグモードの状態を取得
@@ -96,6 +146,20 @@ public:
      * @brief エージェントをリセット（感情と記憶をクリア）
      */
     void reset();
+
+    /**
+     * @brief エージェント状態をファイルへ保存
+     * @param file_path 保存先ファイルパス
+     * @return 成功した場合true
+     */
+    bool save_state_to_file(const std::string& file_path) const;
+
+    /**
+     * @brief エージェント状態をファイルから復元
+     * @param file_path 読込元ファイルパス
+     * @return 成功した場合true
+     */
+    bool load_state_from_file(const std::string& file_path);
 
     /**
      * @brief デバッグ情報を出力
@@ -115,9 +179,23 @@ private:
     bool initialized_;
     std::string last_error_;
     bool debug_mode_;
+    bool tool_use_enabled_;
+    int max_tool_iterations_;
+
+    // ツール実行器（set_tool_executor()で外部注入可能）
+    IToolExecutor* tool_executor_;
+
+    // 内蔵レジストリ（register_tool()使用時に利用）
+    std::unique_ptr<ToolRegistryExecutor> owned_tool_registry_;
 
     /**
      * @brief 記憶の統合を実行（定期的に呼ばれる）
      */
     void consolidate_memories();
+
+    /**
+     * @brief 直近会話をLLMで要約
+     * @return 要約文（失敗時は空文字）
+     */
+    std::string summarize_recent_conversation_with_llm() const;
 };

@@ -3,6 +3,7 @@
 #include "EmotionEngine.h"
 #include "MemoryController.h"
 #include <string>
+#include <vector>
 
 /**
  * @brief プロンプト・オーケストレーター (Prompt Orchestrator)
@@ -13,6 +14,11 @@
  */
 class PromptOrchestrator {
 public:
+    struct StructuredLogSection {
+        std::string name;
+        std::string content;
+    };
+
     PromptOrchestrator();
     ~PromptOrchestrator();
 
@@ -34,11 +40,35 @@ public:
      */
     void set_system_prompt(const std::string& system_prompt);
 
+    const std::string& get_system_prompt() const { return system_prompt_; }
+
     /**
      * @brief 応答トーン制御の指示を設定
      * @param tone_instruction トーン制御の指示
      */
     void set_tone_instruction(const std::string& tone_instruction);
+
+    const std::string& get_tone_instruction() const { return tone_instruction_; }
+
+    /**
+     * @brief システムプロンプトに挿入する構造化ログセクションを追加
+     * @param section_name セクション名
+     * @param content ログ本文
+     */
+    void add_system_log_section(const std::string& section_name, const std::string& content);
+
+    /**
+     * @brief システムログセクションを全てクリア
+     */
+    void clear_system_log_sections();
+
+    /**
+     * @brief システムログセクションを一括置換
+     * @param sections 新しいログセクション一覧
+     */
+    void set_system_log_sections(const std::vector<StructuredLogSection>& sections);
+
+    const std::vector<StructuredLogSection>& get_system_log_sections() const { return system_log_sections_; }
 
     /**
      * @brief 記憶検索の最大件数を設定
@@ -46,17 +76,28 @@ public:
      */
     void set_max_episodes(int max_episodes) { max_episodes_ = max_episodes; }
 
+    int get_max_episodes() const { return max_episodes_; }
+
     /**
      * @brief 短期メモリの表示ターン数を設定
      * @param max_turns 最大ターン数（0 = 全て）
      */
     void set_short_term_turns(int max_turns) { short_term_turns_ = max_turns; }
 
+    int get_short_term_turns() const { return short_term_turns_; }
+
 private:
     std::string system_prompt_;      // 基本システムプロンプト
     std::string tone_instruction_;   // トーン制御の指示
+    std::vector<StructuredLogSection> system_log_sections_; // 構造化システムログ
     int max_episodes_;               // 記憶検索の最大件数
     int short_term_turns_;           // 短期メモリの表示ターン数
+
+    /**
+     * @brief 構造化システムログをプロンプト用テキストに変換
+     * @return システムログのテキスト
+     */
+    std::string format_system_logs() const;
 
     /**
      * @brief 感情状態をプロンプト用テキストに変換

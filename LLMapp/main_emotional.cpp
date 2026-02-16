@@ -2,7 +2,9 @@
 #include "DialogFunctions.h"
 #include "InputAnalyzer.h"
 #include "MemoryController.h"
+#include "AgentStatePersistence.h"
 #include "Config.h"
+#include "ToolSetup.h"
 #include <iostream>
 #include <string>
 #include <iomanip>
@@ -10,6 +12,70 @@
 #include <chrono>
 #include <fstream>
 #include <sstream>
+#include <cstdio>
+#include <algorithm>
+#include <cctype>
+
+namespace {
+std::string trim_copy(const std::string& text) {
+    auto is_ws = [](unsigned char c) { return std::isspace(c) != 0; };
+
+    auto first = std::find_if_not(text.begin(), text.end(), is_ws);
+    if (first == text.end()) {
+        return "";
+    }
+
+    auto last = std::find_if_not(text.rbegin(), text.rend(), is_ws).base();
+    return std::string(first, last);
+}
+
+std::string to_lower_copy(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return text;
+}
+
+std::string normalize_command_token(const std::string& input) {
+    std::string token = trim_copy(input);
+
+    if (token.size() >= 2) {
+        const char front = token.front();
+        const char back = token.back();
+        const bool double_quoted = (front == '"' && back == '"');
+        const bool single_quoted = (front == '\'' && back == '\'');
+        if (double_quoted || single_quoted) {
+            token = token.substr(1, token.size() - 2);
+        }
+    }
+
+    token = trim_copy(token);
+    token = to_lower_copy(token);
+
+    auto to_alpha_only = [](const std::string& text) {
+        std::string alpha;
+        alpha.reserve(text.size());
+        for (unsigned char c : text) {
+            if (std::isalpha(c)) {
+                alpha.push_back(static_cast<char>(std::tolower(c)));
+            }
+        }
+        return alpha;
+    };
+
+    if (token == "exit" || token == "quit" || token == "debug" ||
+        token == "emotion" || token == "history" || token == "reset") {
+        return token;
+    }
+
+    const std::string alpha_only = to_alpha_only(token);
+    if (alpha_only == "exit" || alpha_only == "quit" || alpha_only == "debug" ||
+        alpha_only == "emotion" || alpha_only == "history" || alpha_only == "reset") {
+        return alpha_only;
+    }
+
+    return token;
+}
+}
 
 // テストケース構造体
 struct TestCase {
@@ -342,7 +408,176 @@ void run_analyzer_test_mode(bool use_llm, const std::string& model_path) {
     std::cout << "\n";
 }
 
+// MemoryController / 永続化のテストモード
+void run_memory_test_mode() {
+    std::cout << "\n";
+    std::cout << "========================================\n";
+    std::cout << " Memory / Persistence テストモード\n";
+    std::cout << "========================================\n";
+
+    int passed = 0;
+    int failed = 0;
+
+    auto report = [&](const std::string& title, bool ok, const std::string& detail = "") {
+        std::cout << (ok ? "[✓ PASS] " : "[✗ FAIL] ") << title;
+        if (!detail.empty()) {
+            std::cout << " - " << detail;
+        }
+        std::cout << "\n";
+        if (ok) {
+            passed++;
+        } else {
+            failed++;
+        }
+    };
+
+    // Test 1: 短期メモリFIFOと上限
+    {
+        MemoryController memory(3);
+        memory.add_to_short_term("user", "A");
+        memory.add_to_short_term("assistant", "B");
+        memory.add_to_short_term("user", "C");
+        memory.add_to_short_term("assistant", "D");
+
+        const auto& history = memory.get_short_term_history();
+        const bool ok = history.size() == 3 && history.front().content == "B" && history.back().content == "D";
+        report("短期メモリFIFO・上限制御", ok, "期待: B,C,D が残る");
+    }
+
+    // Test 2: 要約上書き付き統合
+    {
+        MemoryController memory(10);
+        memory.add_to_short_term("user", "Python辞書について知りたい");
+        memory.add_to_short_term("assistant", "キーと値のペア構造です");
+        memory.add_to_short_term("user", "具体例を教えて");
+        memory.add_to_short_term("assistant", "例えば name: ritsu です");
+        memory.add_to_short_term("user", "理解できた、ありがとう");
+
+        const std::string summary = "ユーザーはPython辞書の概念と具体例を理解した。";
+        memory.consolidate_memory("感情状態: 喜び（中程度） | 感情価: ポジティブ", {"Python", "辞書", "具体例"}, summary);
+
+        const auto& episodes = memory.get_all_episodes();
+        bool ok = !episodes.empty();
+        if (ok) {
+            ok = (episodes.front().summary == summary) &&
+                 (episodes.front().emotional_tag == "positive") &&
+                 (!episodes.front().keywords.empty());
+        }
+        report("要約上書き統合", ok, "LLM要約相当の文字列が保存されること");
+    }
+
+    // Test 3: 関連検索スコア
+    {
+        MemoryController memory(10);
+
+        Episode ep1("C++のスマートポインタでメモリ管理を改善した。", "positive", 0.85);
+        ep1.keywords = {"C++", "スマートポインタ", "メモリ管理"};
+        memory.add_to_long_term(ep1);
+
+        Episode ep2("天気の話をした。", "neutral", 0.20);
+        ep2.keywords = {"天気", "雑談"};
+        memory.add_to_long_term(ep2);
+
+        auto results = memory.search_episodes({"C++", "ポインタ"}, 1);
+        const bool ok = !results.empty() && results.front().summary.find("スマートポインタ") != std::string::npos;
+        report("長期記憶検索", ok, "関連度の高いエピソードが上位に来ること");
+    }
+
+    // Test 4: 長期メモリ上限制御（100件）
+    {
+        MemoryController memory(10);
+        for (int i = 0; i < 120; ++i) {
+            Episode episode("episode-" + std::to_string(i), "neutral", 0.5 + (i % 10) * 0.01);
+            episode.keywords = {"k" + std::to_string(i)};
+            memory.add_to_long_term(episode);
+        }
+
+        const bool ok = memory.get_long_term_size() == 100;
+        report("長期メモリ上限", ok, "100件を超えた分が切り詰められること");
+    }
+
+    // Test 5: 永続化ラウンドトリップ
+    {
+        AgentPersistentState state;
+        state.constitution.core_values = "テスト用価値観";
+        state.constitution.communication_style = "テスト口調";
+        state.constitution.sensitivity_to_praise = 0.77;
+        state.constitution.sensitivity_to_criticism = 0.33;
+        state.constitution.decay_rate = 0.12;
+        state.constitution.baseline_valence = 0.22;
+
+        state.emotion_state.values[BasicEmotion::JOY] = 0.41;
+        state.emotion_state.values[BasicEmotion::ANGER] = 0.05;
+        state.emotion_state.overall_valence = 0.18;
+        state.emotion_state.arousal = 0.44;
+
+        state.short_term_limit = 12;
+        state.short_term_memory.emplace_back("user", "保存テスト開始");
+        state.short_term_memory.emplace_back("assistant", "了解、状態を保存します");
+
+        Episode ep("保存機能のテストを実行した。", "positive", 0.70);
+        ep.keywords = {"保存", "テスト"};
+        state.long_term_memory.push_back(ep);
+
+        state.system_prompt = "SYSTEM";
+        state.tone_instruction = "TONE";
+        state.max_episodes = 4;
+        state.short_term_turns = 6;
+        state.system_log_sections.push_back({"Test", "Memory persistence test"});
+        state.debug_mode = true;
+
+        const std::string temp_file = "memory_test_state.dat";
+        bool ok = AgentStatePersistence::save_to_file(temp_file, state);
+
+        AgentPersistentState loaded;
+        if (ok) {
+            ok = AgentStatePersistence::load_from_file(temp_file, loaded);
+        }
+
+        if (ok) {
+            ok = (loaded.constitution.core_values == state.constitution.core_values) &&
+                 (loaded.short_term_limit == state.short_term_limit) &&
+                 (loaded.short_term_memory.size() == state.short_term_memory.size()) &&
+                 (loaded.long_term_memory.size() == state.long_term_memory.size()) &&
+                 (loaded.long_term_memory.front().summary == state.long_term_memory.front().summary) &&
+                 (loaded.debug_mode == state.debug_mode);
+        }
+
+        std::remove(temp_file.c_str());
+        report("永続化ラウンドトリップ", ok, "保存→読込で主要状態が一致すること");
+    }
+
+    std::cout << "\n========================================\n";
+    std::cout << " Memory / Persistence テスト結果\n";
+    std::cout << "========================================\n";
+    std::cout << "合計:   " << (passed + failed) << " テスト\n";
+    std::cout << "合格:   " << passed << "\n";
+    std::cout << "不合格: " << failed << "\n";
+    std::cout << "合格率: " << std::fixed << std::setprecision(1)
+              << (100.0 * passed / (passed + failed)) << "%\n";
+    std::cout << "\n";
+}
+
+// 統合テストモード（Analyzer + Memory/Persistence）
+void run_integration_test_mode(const std::string& model_path) {
+    std::cout << "\n";
+    std::cout << "========================================\n";
+    std::cout << " 統合テストモード\n";
+    std::cout << "========================================\n";
+    std::cout << "InputAnalyzer と Memory/Persistence を連続実行します。\n\n";
+
+    run_analyzer_test_mode(true, model_path);
+    run_memory_test_mode();
+
+    std::cout << "========================================\n";
+    std::cout << " 統合テスト完了\n";
+    std::cout << "========================================\n";
+    std::cout << "\n";
+}
+
 int main(int argc, char** argv) {
+    const std::string kAgentStateFile = "agent_state.dat";
+
     // コマンドライン引数のチェック
     bool debug_mode = false;
     
@@ -359,6 +594,16 @@ int main(int argc, char** argv) {
             run_analyzer_test_mode(true, DEFAULT_MODEL_PATH);  // LLMモード
             return 0;
         }
+        // 統合テストモード
+        else if (arg == "--test-all" || arg == "--test-integration") {
+            run_integration_test_mode(DEFAULT_MODEL_PATH);
+            return 0;
+        }
+        // 記憶・永続化テストモード
+        else if (arg == "--test-memory") {
+            run_memory_test_mode();
+            return 0;
+        }
         // キーワードベースのみのテスト
         else if (arg == "--test-keyword") {
             run_analyzer_test_mode(false, "");  // キーワードベースのみ
@@ -371,6 +616,8 @@ int main(int argc, char** argv) {
             std::cout << "  LLMapp.exe                  - 通常の対話モード\n";
             std::cout << "  LLMapp.exe --debug          - デバッグモード（詳細ログ出力）\n";
             std::cout << "  LLMapp.exe --test-analyzer  - InputAnalyzer テスト (LLMモード)\n";
+            std::cout << "  LLMapp.exe --test-all       - 統合テスト (Analyzer + Memory)\n";
+            std::cout << "  LLMapp.exe --test-memory    - Memory/Persistence テスト\n";
             std::cout << "  LLMapp.exe --test-keyword   - InputAnalyzer テスト (キーワードのみ)\n";
             std::cout << "  LLMapp.exe --help           - このヘルプを表示\n";
             return 0;
@@ -399,6 +646,9 @@ int main(int argc, char** argv) {
         constitution
     );
 
+    // ツール登録は専用モジュールへ分離（mainの肥大化防止）
+    register_default_tools(agent);
+
     // システムプロンプトの設定
     // 注: PromptOrchestratorに既にデフォルトのキャラクター設定（律）が組み込まれています
     // カスタマイズする場合のみ、以下のコメントを外してください
@@ -417,6 +667,12 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::cout << "初期化完了！\n\n";
+
+    if (agent.load_state_from_file(kAgentStateFile)) {
+        std::cout << "保存済み状態を復元しました: " << kAgentStateFile << "\n\n";
+    } else {
+        std::cout << "保存済み状態が見つからないため、新しいセッションを開始します。\n\n";
+    }
     
     // デバッグモードの設定
     if (debug_mode) {
@@ -427,6 +683,17 @@ int main(int argc, char** argv) {
     // デバッグ情報の表示
     if (!debug_mode) {
         agent.print_debug_info();
+    }
+
+    // 起動時の初回挨拶（履歴が空のときのみ）
+    const std::string latest_history = agent.get_conversation_history(1);
+    if (latest_history.empty()) {
+        std::cout << "[起動メッセージ生成中...]\n";
+        std::string startup_response = agent.process("");
+        std::cout << "\nAI: " << startup_response << "\n";
+        std::cout << "[感情: " << agent.get_emotion_status() << "]\n\n";
+    } else {
+        std::cout << "[保存済み履歴を復元したため、起動挨拶はスキップしました]\n\n";
     }
 
     // ===== 対話ループ =====
@@ -440,37 +707,40 @@ int main(int argc, char** argv) {
             break;
         }
 
+        const std::string normalized_input = trim_copy(user_input);
+        const std::string command_input = normalize_command_token(user_input);
+
         // 空入力のスキップ
-        if (user_input.empty()) {
+        if (normalized_input.empty()) {
             continue;
         }
 
         // 終了コマンド
-        if (user_input == "quit" || user_input == "exit") {
+        if (command_input == "quit" || command_input == "exit") {
             std::cout << "\n対話を終了します。ありがとうございました！\n";
             break;
         }
 
         // デバッグコマンド
-        if (user_input == "debug") {
+        if (command_input == "debug") {
             agent.print_debug_info();
             continue;
         }
 
         // 感情状態の表示コマンド
-        if (user_input == "emotion") {
+        if (command_input == "emotion") {
             std::cout << "現在の感情: " << agent.get_emotion_status() << "\n\n";
             continue;
         }
 
         // 会話履歴の表示コマンド
-        if (user_input == "history") {
+        if (command_input == "history") {
             std::cout << "会話履歴:\n" << agent.get_conversation_history() << "\n";
             continue;
         }
 
         // リセットコマンド
-        if (user_input == "reset") {
+        if (command_input == "reset") {
             agent.reset();
             std::cout << "エージェントをリセットしました。\n\n";
             continue;
@@ -478,7 +748,7 @@ int main(int argc, char** argv) {
 
         // エージェントで処理
         std::cout << "\n[処理中...]\n";
-        std::string response = agent.process(user_input);
+        std::string response = agent.process(normalized_input);
 
         // 応答の表示
         std::cout << "\nAI: " << response << "\n";
@@ -491,6 +761,12 @@ int main(int argc, char** argv) {
     std::cout << "\n===== セッション統計 =====\n";
     std::cout << "長期記憶のエピソード数: " << agent.get_episode_count() << "\n";
     std::cout << "========================\n";
+
+    if (agent.save_state_to_file(kAgentStateFile)) {
+        std::cout << "状態を保存しました: " << kAgentStateFile << "\n";
+    } else {
+        std::cout << "状態の保存に失敗しました。\n";
+    }
 
     return 0;
 }

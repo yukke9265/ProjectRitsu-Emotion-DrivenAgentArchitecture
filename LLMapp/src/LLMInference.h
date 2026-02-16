@@ -26,6 +26,14 @@ public:
     // 推論実行：プロンプトを受け取って結果を返す
     std::string infer(const std::string& prompt);
 
+    // 推論実行（生出力）：後処理を行わず、モデルの出力をそのまま返す
+    // ツール呼び出しタグ（<tool_call>...</tool_call>）検出時に使用する
+    std::string infer_raw(const std::string& prompt);
+
+    // 出力後処理（メタ情報や制御トークン除去）
+    // infer_raw() の戻り値を既存仕様に合わせる際に利用できる
+    static std::string cleanup_response(const std::string& raw_output);
+
     // 単発推論：推論後に自動的にKVキャッシュをクリア（テストや独立した推論に最適）
     std::string infer_stateless(const std::string& prompt);
 
