@@ -2,7 +2,7 @@
 
 // ===== LLMモデル設定 =====
 // ここを変更するだけで、全てのプログラムで使用するモデルが変わります
-#define DEFAULT_MODEL_PATH "D:\\0_OllamaModels\\WS\\models\\Qwen_Qwen3-4B-Instruct-2507-Q5_K_M.gguf"
+#define DEFAULT_MODEL_PATH "D:\\0_OllamaModels\\WS\\models\\gemma-2-9b-it-Q5_K_M.gguf"
 
 // ===== LLMパラメータ設定 =====
 #define DEFAULT_GPU_LAYERS 99        // ↑ 速くなるがVRAM消費増 / ↓ 遅くなるがVRAM節約
@@ -26,9 +26,11 @@
 #define SYSTEM_PROMPT_PRESET_FRIENDLY_FRIEND 2
 
 // 使用するプリセット（必要に応じて上記の値に変更）
-#define SYSTEM_PROMPT_PRESET SYSTEM_PROMPT_PRESET_RITSU
+#define SYSTEM_PROMPT_PRESET SYSTEM_PROMPT_PRESET_FRIENDLY_FRIEND
 
 // 従来の「律」人格
+// 注意: 「## コア価値観」「## コミュニケーションスタイル」は PromptOrchestrator 側で
+// constitution から一元管理して挿入されるため、ここには重複定義しない。
 #define SYSTEM_PROMPT_RITSU R"PROMPT(あなたは、自身の内なる『行動憲法（Personality Constitution）』を絶対的な基盤とし、その時々の『心情の揺らぎ（Emotional States）』を言語表現に反映させる独立AI人格です。
 
 ### 【人格憲法（Personality Constitution）】
@@ -64,6 +66,25 @@
 #define DEFAULT_SYSTEM_PROMPT SYSTEM_PROMPT_FRIENDLY_FRIEND
 #else
 #define DEFAULT_SYSTEM_PROMPT SYSTEM_PROMPT_RITSU
+#endif
+
+// ===== 返答スタイル指示（PromptOrchestratorで一元管理） =====
+#define RESPONSE_STYLE_GUIDELINES_RITSU R"PROMPT(- ユーザーの入力の長さと複雑さに応じて、適切な文章量で返答してください
+- 短い質問や簡単な内容には、簡潔に要点を絞って答えてください
+- 詳しい説明や複雑な内容を求められた場合のみ、詳細に説明してください
+- いきなり長文で返答せず、必要に応じて段階的に情報を提供してください
+- 応答は必ず自然な日本語で行ってください（英語・中国語・韓国語など他言語で回答しないこと）)PROMPT"
+
+#define RESPONSE_STYLE_GUIDELINES_FRIENDLY_FRIEND R"PROMPT(- 短い相談には短く返し、深い相談には段階的に丁寧に答える
+- 不安や落ち込みには、安心感を優先して励ます
+- 成果や前進には、素直に一緒に喜ぶ
+- 断定しすぎず、押し付けない言い回しを選ぶ
+- 応答は必ず自然な日本語で行う（他言語は使わない）)PROMPT"
+
+#if SYSTEM_PROMPT_PRESET == SYSTEM_PROMPT_PRESET_FRIENDLY_FRIEND
+#define DEFAULT_RESPONSE_STYLE_GUIDELINES RESPONSE_STYLE_GUIDELINES_FRIENDLY_FRIEND
+#else
+#define DEFAULT_RESPONSE_STYLE_GUIDELINES RESPONSE_STYLE_GUIDELINES_RITSU
 #endif
 
 // ===== テストモード用設定 =====

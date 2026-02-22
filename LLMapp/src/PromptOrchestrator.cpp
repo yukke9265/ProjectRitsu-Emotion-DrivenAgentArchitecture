@@ -2,6 +2,52 @@
 #include "Config.h"
 #include <sstream>
 
+namespace {
+
+bool is_managed_constitution_heading(const std::string& line) {
+    return line == "## コア価値観"
+        || line == "## コミュニケーションスタイル"
+        || line == "## 返答スタイル"
+        || line == "## 返答の文章量について";
+}
+
+bool is_markdown_heading(const std::string& line) {
+    return !line.empty() && line[0] == '#';
+}
+
+std::string strip_managed_constitution_sections(const std::string& system_prompt) {
+    std::istringstream iss(system_prompt);
+    std::ostringstream oss;
+    std::string line;
+    bool skipping_managed_section = false;
+    bool wrote_any = false;
+
+    while (std::getline(iss, line)) {
+        if (is_managed_constitution_heading(line)) {
+            skipping_managed_section = true;
+            continue;
+        }
+
+        if (skipping_managed_section && is_markdown_heading(line)) {
+            skipping_managed_section = false;
+        }
+
+        if (skipping_managed_section) {
+            continue;
+        }
+
+        if (wrote_any) {
+            oss << "\n";
+        }
+        oss << line;
+        wrote_any = true;
+    }
+
+    return oss.str();
+}
+
+}
+
 PromptOrchestrator::PromptOrchestrator()
     : system_prompt_(DEFAULT_SYSTEM_PROMPT)
     , tone_instruction_(
@@ -11,6 +57,7 @@ PromptOrchestrator::PromptOrchestrator()
         "- 高Arousal時: 饒舌になるか、余裕を失って短気な反応を見せます。\n"
         "- 低Dominance時: 図星を突かれた際など、言葉を詰まらせる等の反応を挿入します。"
     )
+    , response_style_instruction_(DEFAULT_RESPONSE_STYLE_GUIDELINES)
     , max_episodes_(3)
     , short_term_turns_(5) {
 }
@@ -26,10 +73,11 @@ std::string PromptOrchestrator::build_final_prompt(
     const MemoryController& memory_controller) {
     
     std::ostringstream prompt;
+    const std::string base_system_prompt = strip_managed_constitution_sections(system_prompt_);
 
     // ===== 1. 人格憲法（システムプロンプト） =====
     prompt << "# あなたの人格憲法\n\n";
-    prompt << system_prompt_ << "\n\n";
+    prompt << base_system_prompt << "\n\n";
 
     const auto& constitution = emotion_engine.get_constitution();
     prompt << "## コア価値観\n";
@@ -38,30 +86,39 @@ std::string PromptOrchestrator::build_final_prompt(
     prompt << "## コミュニケーションスタイル\n";
     prompt << constitution.communication_style << "\n\n";
 
-    // ===== 2. 現在の感情状態 =====
-    prompt << "# 現在のあなたの感情状態\n\n";
+    if (!response_style_instruction_.empty()) {
+        prompt << "## 返答スタイル\n";
+        prompt << response_style_instruction_ << "\n\n";
+    }
+
+    // ===== 2. 現在の感情状態とトーン制御 =====
+    prompt << "# 現在のあなたの感情状態と応答トーン\n\n";
     prompt << format_emotion_state(emotion_engine) << "\n\n";
 
-    // ===== 3. 構造化システムログ =====
-    prompt << "# システムログ（構造化コンテキスト）\n\n";
-    prompt << format_system_logs() << "\n\n";
-
-    // ===== 4. トーン制御の指示 =====
+    // 感情状態から生成されるトーン制御
     const auto& emotion_state = emotion_engine.get_current_state();
     std::string tone_control = generate_tone_control(emotion_state);
     if (!tone_control.empty()) {
-        prompt << "# 応答トーンの制御\n\n";
         prompt << tone_control << "\n\n";
     }
 
-    // ===== 5. 短期メモリ（直近の会話） =====
+    // カスタムトーン指示
+    if (!tone_instruction_.empty()) {
+        prompt << tone_instruction_ << "\n\n";
+    }
+
+    // ===== 3. 構造化システムログ（Output Contract除外） =====
+    prompt << "# システムログ（構造化コンテキスト）\n\n";
+    prompt << format_system_logs_excluding("Output Contract") << "\n\n";
+
+    // ===== 4. 短期メモリ（直近の会話） =====
     std::string short_term = format_short_term_memory(memory_controller);
     if (!short_term.empty()) {
         prompt << "# 直近の会話履歴\n\n";
         prompt << short_term << "\n";
     }
 
-    // ===== 6. 関連する長期記憶 =====
+    // ===== 5. 関連する長期記憶 =====
     // ユーザー入力からキーワードを抽出（簡易実装）
     std::vector<std::string> keywords;
     // TODO: より高度なキーワード抽出
@@ -79,23 +136,18 @@ std::string PromptOrchestrator::build_final_prompt(
         prompt << long_term << "\n";
     }
 
-    // ===== 7. カスタムトーン指示 =====
-    if (!tone_instruction_.empty()) {
-        prompt << "# 追加の応答指示\n\n";
-        prompt << tone_instruction_ << "\n\n";
+    // ===== 6. 出力契約（独立セクション） =====
+    const std::string output_contract = find_system_log_section("Output Contract");
+    if (!output_contract.empty()) {
+        prompt << "# 出力契約\n\n";
+        prompt << output_contract << "\n\n";
     }
 
-    // ===== 8. 応答指示 =====
+    // ===== 7. 応答指示 =====
     prompt << "---\n\n";
     prompt << "直近の会話履歴の最後の user 発言に対して応答してください。\n";
-    prompt << "律として、ユーザーに直接話しかける自然なセリフを生成してください。\n";
-    prompt << "以下の形式で、セリフのみを書いてください：\n\n";
-    prompt << "応答: [セリフをここに書く]\n\n";
-    prompt << "注意事項：\n";
-    prompt << "- 感情状態の数値（感情価、覚醒度など）は書かないでください\n";
-    prompt << "- メタ情報や説明は不要です\n";
-    prompt << "- 純粋なセリフのみを生成してください\n";
-    prompt << "- 応答は必ず日本語で書いてください（他言語を混在させないでください）\n";
+    prompt << "ユーザーに直接話しかける自然なセリフを生成してください。\n";
+    prompt << "感情状態の数値や分析説明は出さず、自然な日本語の応答本文だけを返してください。\n";
 
     return prompt.str();
 }
@@ -106,6 +158,12 @@ void PromptOrchestrator::set_system_prompt(const std::string& system_prompt) {
 
 void PromptOrchestrator::set_tone_instruction(const std::string& tone_instruction) {
     tone_instruction_ = tone_instruction;
+}
+
+void PromptOrchestrator::set_response_style_instruction(
+    const std::string& response_style_instruction) {
+
+    response_style_instruction_ = response_style_instruction;
 }
 
 void PromptOrchestrator::add_system_log_section(
@@ -157,8 +215,47 @@ std::string PromptOrchestrator::format_system_logs() const {
     return oss.str();
 }
 
+std::string PromptOrchestrator::format_system_logs_excluding(const std::string& excluded_section_name) const {
+    std::ostringstream oss;
+    bool has_any = false;
+
+    for (size_t i = 0; i < system_log_sections_.size(); ++i) {
+        const auto& section = system_log_sections_[i];
+        const std::string title = section.name.empty() ? "Untitled" : section.name;
+
+        if (title == excluded_section_name) {
+            continue;
+        }
+
+        has_any = true;
+        oss << "## " << title << "\n";
+        oss << "```text\n";
+        oss << section.content << "\n";
+        oss << "```\n\n";
+    }
+
+    if (!has_any) {
+        oss << "- 現在、注入されているログはありません。";
+    }
+
+    return oss.str();
+}
+
+std::string PromptOrchestrator::find_system_log_section(const std::string& section_name) const {
+    for (const auto& section : system_log_sections_) {
+        const std::string title = section.name.empty() ? "Untitled" : section.name;
+        if (title == section_name) {
+            return section.content;
+        }
+    }
+
+    return "";
+}
+
 std::string PromptOrchestrator::format_emotion_state(const EmotionEngine& emotion_engine) {
     std::ostringstream oss;
+    std::ostringstream detail_oss;
+    bool has_detail = false;
 
     const auto& state = emotion_engine.get_current_state();
 
@@ -166,7 +263,6 @@ std::string PromptOrchestrator::format_emotion_state(const EmotionEngine& emotio
     oss << emotion_engine.describe_emotion() << "\n\n";
 
     // 各感情の詳細値
-    oss << "詳細:\n";
     for (const auto& pair : state.values) {
         if (pair.second > 0.1) {  // 0.1以上の感情のみ表示
             std::string emotion_name;
@@ -180,8 +276,14 @@ std::string PromptOrchestrator::format_emotion_state(const EmotionEngine& emotio
                 case BasicEmotion::ANGER: emotion_name = "怒り"; break;
                 case BasicEmotion::ANTICIPATION: emotion_name = "期待"; break;
             }
-            oss << "  - " << emotion_name << ": " << pair.second << "\n";
+            detail_oss << "  - " << emotion_name << ": " << pair.second << "\n";
+            has_detail = true;
         }
+    }
+
+    if (has_detail) {
+        oss << "詳細:\n";
+        oss << detail_oss.str();
     }
 
     return oss.str();

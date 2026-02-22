@@ -63,13 +63,15 @@ std::string normalize_command_token(const std::string& input) {
     };
 
     if (token == "exit" || token == "quit" || token == "debug" ||
-        token == "emotion" || token == "history" || token == "reset") {
+        token == "emotion" || token == "history" || token == "reset" ||
+        token == "prompt") {
         return token;
     }
 
     const std::string alpha_only = to_alpha_only(token);
     if (alpha_only == "exit" || alpha_only == "quit" || alpha_only == "debug" ||
-        alpha_only == "emotion" || alpha_only == "history" || alpha_only == "reset") {
+        alpha_only == "emotion" || alpha_only == "history" || alpha_only == "reset" ||
+        alpha_only == "prompt") {
         return alpha_only;
     }
 
@@ -620,6 +622,8 @@ int main(int argc, char** argv) {
             std::cout << "  LLMapp.exe --test-memory    - Memory/Persistence テスト\n";
             std::cout << "  LLMapp.exe --test-keyword   - InputAnalyzer テスト (キーワードのみ)\n";
             std::cout << "  LLMapp.exe --help           - このヘルプを表示\n";
+            std::cout << "\n対話中コマンド:\n";
+            std::cout << "  debug / emotion / history / reset / prompt\n";
             return 0;
         }
     }
@@ -630,6 +634,7 @@ int main(int argc, char** argv) {
     std::cout << "===== 感情駆動型AIエージェント =====\n";
     std::cout << "5つのモジュールで構成されたエージェントです。\n";
     std::cout << "終了するには 'quit' または 'exit' を入力してください。\n\n";
+    std::cout << "ヒント: 『数当てゲームをしよう』と話しかけるとゲームを開始できます。\n\n";
 
     // 人格憲法のカスタマイズ
     PersonalityConstitution constitution;
@@ -668,7 +673,8 @@ int main(int argc, char** argv) {
     }
     std::cout << "初期化完了！\n\n";
 
-    if (agent.load_state_from_file(kAgentStateFile)) {
+    const bool loaded_state = agent.load_state_from_file(kAgentStateFile);
+    if (loaded_state) {
         std::cout << "保存済み状態を復元しました: " << kAgentStateFile << "\n\n";
     } else {
         std::cout << "保存済み状態が見つからないため、新しいセッションを開始します。\n\n";
@@ -694,6 +700,9 @@ int main(int argc, char** argv) {
         std::cout << "[感情: " << agent.get_emotion_status() << "]\n\n";
     } else {
         std::cout << "[保存済み履歴を復元したため、起動挨拶はスキップしました]\n\n";
+        if (loaded_state) {
+            std::cout << "復元した会話履歴:\n" << agent.get_conversation_history() << "\n\n";
+        }
     }
 
     // ===== 対話ループ =====
@@ -743,6 +752,15 @@ int main(int argc, char** argv) {
         if (command_input == "reset") {
             agent.reset();
             std::cout << "エージェントをリセットしました。\n\n";
+            continue;
+        }
+
+        // プロンプト確認コマンド（状態更新なし）
+        if (command_input == "prompt") {
+            std::cout << "システムプロンプト（状態更新なし）:\n";
+            std::cout << "------------------------------------------------------------\n";
+            std::cout << agent.build_prompt_preview() << "\n";
+            std::cout << "------------------------------------------------------------\n\n";
             continue;
         }
 

@@ -44,7 +44,8 @@ std::string normalize_control_command(const std::string& input) {
     const std::string token = trim_and_lower_copy(input);
 
     if (token == "exit" || token == "quit" || token == "debug" ||
-        token == "emotion" || token == "history" || token == "reset") {
+        token == "emotion" || token == "history" || token == "reset" ||
+        token == "prompt") {
         return token;
     }
 
@@ -57,7 +58,8 @@ std::string normalize_control_command(const std::string& input) {
     }
 
     if (alpha_only == "exit" || alpha_only == "quit" || alpha_only == "debug" ||
-        alpha_only == "emotion" || alpha_only == "history" || alpha_only == "reset") {
+        alpha_only == "emotion" || alpha_only == "history" || alpha_only == "reset" ||
+        alpha_only == "prompt") {
         return alpha_only;
     }
 
@@ -155,12 +157,39 @@ std::string EmotionalAgent::process(const std::string& user_input) {
             );
         }
 
+        bool allow_tool_call = false;
+
         if (tool_use_enabled_ && tool_executor_) {
             const auto tools = tool_executor_->list_tools();
             if (!tools.empty()) {
+                allow_tool_call = true;
                 add_system_log_section("Tool Interface", ToolIOProtocol::build_tool_guide(tools));
+
+                const auto has_number_guess_tool = std::any_of(
+                    tools.begin(),
+                    tools.end(),
+                    [](const ToolSpec& spec) {
+                        return spec.name == "number_guess_game";
+                    }
+                );
+
+                if (has_number_guess_tool) {
+                    add_system_log_section(
+                        "Game Tool Policy",
+                        "ユーザーが数当てゲームを希望した場合、推測や判定を文章で決め打ちせず"
+                        " number_guess_game を使って進行してください。"
+                        "開始時は action=start、進行中の判定は action=guess、"
+                        "状態確認は action=status、終了/やり直しは action=reset を優先してください。"
+                        "数値の正誤判定は必ずツール結果に従ってください。"
+                    );
+                }
             }
         }
+
+        add_system_log_section(
+            "Output Contract",
+            ToolIOProtocol::build_assistant_contract_guide()
+        );
 
         if (debug_mode_) {
             std::cout << "\n" << std::string(60, '=') << "\n";
@@ -260,75 +289,213 @@ std::string EmotionalAgent::process(const std::string& user_input) {
         }
 
         // Step 5: LLMで応答生成
+        // ドキュメント運用方針:
+        // - このブロックのコメントを「運用仕様の正本」とする（READMEは要約のみ）。
+        // - 1ターンは Tool Phase → Response Phase の順で固定する。
+        // - Tool Phase は <tool_call> のみ許可し、不要時は __no_tool__ を返す。
+        // - Response Phase は <assistant_response> を優先し、失敗時のみ自然文フォールバックを許可する。
+        // - 仕様を変える場合は、このコメントと ToolIOProtocol の契約生成を同時に更新する。
         if (debug_mode_) {
             std::cout << "--- [Step 5] LLM推論 ---\n";
             std::cout << "LLMに推論を要求中...\n";
         }
 
         std::string response;
-        std::string working_prompt = final_prompt;
         std::string tool_feedback_blocks;
+        const std::string no_tool_call_name = "__no_tool__";
 
-        for (int tool_iter = 0; tool_iter <= max_tool_iterations_; ++tool_iter) {
-            const std::string raw_output = llm_inference_->infer_raw(working_prompt);
+        auto preview_text = [](const std::string& text, size_t max_len) {
+            if (text.size() <= max_len) {
+                return text;
+            }
+            return text.substr(0, max_len) + "...";
+        };
 
-            ToolCall tool_call;
-            const bool has_tool_call =
-                tool_use_enabled_ &&
-                tool_executor_ &&
-                ToolIOProtocol::try_parse_tool_call(raw_output, tool_call);
+        auto has_tool_markup = [](const std::string& text) {
+            return text.find("<tool_call>") != std::string::npos ||
+                text.find("</tool_call>") != std::string::npos;
+        };
 
-            if (!has_tool_call) {
-                response = LLMInference::cleanup_response(raw_output);
-                break;
+        auto looks_like_contract_or_instruction_echo = [](const std::string& text) {
+            const std::string lowered = trim_and_lower_copy(text);
+            if (lowered.empty()) {
+                return false;
             }
 
-            if (debug_mode_) {
-                std::cout << "[ToolCall] name=" << tool_call.name << "\n";
-                std::cout << "[ToolCall] input=" << tool_call.input << "\n";
+            const bool has_contract_keywords =
+                lowered.find("assistant_channel") != std::string::npos ||
+                lowered.find("tool_channel") != std::string::npos ||
+                lowered.find("assistant_response") != std::string::npos ||
+                lowered.find("tool_call") != std::string::npos ||
+                lowered.find("出力契約") != std::string::npos ||
+                lowered.find("禁止") != std::string::npos ||
+                lowered.find("見出し") != std::string::npos ||
+                lowered.find("注意書き") != std::string::npos;
+
+            std::istringstream iss(lowered);
+            std::string line;
+            int non_empty_lines = 0;
+            int bullet_lines = 0;
+            while (std::getline(iss, line)) {
+                const std::string t = trim_and_lower_copy(line);
+                if (t.empty()) {
+                    continue;
+                }
+                ++non_empty_lines;
+                if (t.rfind("-", 0) == 0 || t.rfind("*", 0) == 0) {
+                    ++bullet_lines;
+                }
             }
 
-            ToolResult tool_result;
+            const bool mostly_bullets = non_empty_lines >= 2 && bullet_lines == non_empty_lines;
+            return has_contract_keywords || mostly_bullets;
+        };
 
-            if (tool_iter >= max_tool_iterations_) {
-                tool_result.success = false;
-                tool_result.error = "tool_iteration_limit_exceeded";
-            }
-            else {
-                tool_result = tool_executor_->execute(tool_call);
-            }
-
-            const std::string result_block = ToolIOProtocol::build_tool_result_block(tool_call, tool_result);
+        // Tool Phase: ツール計画・実行専用（最終ユーザー応答は生成しない）
+        auto build_tool_phase_prompt = [&](bool strict_retry_mode) {
+            std::string phase_prompt = final_prompt;
+            phase_prompt += "\n\n# Tool Phase（ツール計画・呼び出し専用）\n\n";
+            phase_prompt += ToolIOProtocol::build_tool_call_contract_guide();
+            phase_prompt += "\n\n";
+            phase_prompt +=
+                "このフェーズでは必ず <tool_call> のみを出力してください。"
+                "ツール不要の場合は name: __no_tool__ / input: {} を出力してください。\n";
 
             if (!tool_feedback_blocks.empty()) {
-                tool_feedback_blocks += "\n\n";
-            }
-            tool_feedback_blocks += result_block;
-
-            if (debug_mode_) {
-                std::cout << "[ToolResult] success=" << (tool_result.success ? "true" : "false") << "\n";
-                if (tool_result.success) {
-                    std::cout << "[ToolResult] output=" << tool_result.output << "\n";
-                }
-                else {
-                    std::cout << "[ToolResult] error=" << tool_result.error << "\n";
-                }
+                phase_prompt += "\n# ツール実行ログ\n\n";
+                phase_prompt += tool_feedback_blocks;
+                phase_prompt += "\n";
             }
 
-            working_prompt = final_prompt;
-            working_prompt += "\n\n# ツール実行ログ\n\n";
-            working_prompt += tool_feedback_blocks;
-            working_prompt += "\n\n";
+            if (strict_retry_mode) {
+                phase_prompt +=
+                    "\n【再出力指示】<tool_call> ブロック1つだけを出力してください。"
+                    "前置き・説明文・箇条書きは禁止です。\n";
+            }
 
-            if (tool_iter >= max_tool_iterations_) {
-                working_prompt += "これ以上ツールは呼ばず、取得済み情報のみで最終応答してください。\n";
-                response = llm_inference_->infer(working_prompt);
+            return phase_prompt;
+        };
+
+        // Response Phase: 最終応答専用（tool_call は禁止）
+        auto build_response_phase_prompt = [&](bool strict_retry_mode) {
+            std::string phase_prompt = final_prompt;
+            phase_prompt += "\n\n# Response Phase（最終応答専用）\n\n";
+            phase_prompt += ToolIOProtocol::build_assistant_contract_guide();
+            phase_prompt += "\n\n";
+
+            if (!tool_feedback_blocks.empty()) {
+                phase_prompt += "# ツール実行ログ\n\n";
+                phase_prompt += tool_feedback_blocks;
+                phase_prompt += "\n\n";
+            }
+
+            phase_prompt += "このフェーズでは tool_call を出力しないでください。\n";
+
+            if (strict_retry_mode) {
+                phase_prompt +=
+                    "【再出力指示】可能なら <assistant_response> ブロック1つのみで再出力してください。"
+                    "自然文のみでも可ですが、前置きや契約文は含めないでください。\n";
+            }
+
+            return phase_prompt;
+        };
+
+        if (allow_tool_call) {
+            int tool_contract_retry_budget = 1;
+            bool strict_retry_mode = false;
+
+            for (int tool_iter = 0; tool_iter < max_tool_iterations_; ++tool_iter) {
+                const std::string tool_phase_prompt = build_tool_phase_prompt(strict_retry_mode);
+                strict_retry_mode = false;
+                const std::string raw_output = llm_inference_->infer_raw(tool_phase_prompt);
+
+                ToolCall tool_call;
+                const bool has_tool_call = ToolIOProtocol::try_parse_tool_call_strict(raw_output, tool_call);
+                if (!has_tool_call) {
+                    if (debug_mode_) {
+                        std::cout << "[ToolPhaseViolation] invalid_tool_call_format\n";
+                        std::cout << "[ToolPhaseViolation] raw_preview=" << preview_text(raw_output, 600) << "\n";
+                    }
+
+                    if (tool_contract_retry_budget > 0) {
+                        --tool_contract_retry_budget;
+                        strict_retry_mode = true;
+                        continue;
+                    }
+
+                    break;
+                }
+
+                if (tool_call.name == no_tool_call_name) {
+                    if (debug_mode_) {
+                        std::cout << "[ToolPhase] no_tool_selected\n";
+                    }
+                    break;
+                }
+
+                if (debug_mode_) {
+                    std::cout << "[ToolCall] name=" << tool_call.name << "\n";
+                    std::cout << "[ToolCall] input=" << tool_call.input << "\n";
+                }
+
+                ToolResult tool_result = tool_executor_->execute(tool_call);
+                const std::string result_block = ToolIOProtocol::build_tool_result_block(tool_call, tool_result);
+
+                if (!tool_feedback_blocks.empty()) {
+                    tool_feedback_blocks += "\n\n";
+                }
+                tool_feedback_blocks += result_block;
+
+                if (debug_mode_) {
+                    std::cout << "[ToolResult] success=" << (tool_result.success ? "true" : "false") << "\n";
+                    if (tool_result.success) {
+                        std::cout << "[ToolResult] output=" << tool_result.output << "\n";
+                    }
+                    else {
+                        std::cout << "[ToolResult] error=" << tool_result.error << "\n";
+                    }
+                }
+            }
+        }
+
+        int response_contract_retry_budget = 1;
+        bool strict_response_retry_mode = false;
+
+        while (true) {
+            const std::string response_phase_prompt = build_response_phase_prompt(strict_response_retry_mode);
+            strict_response_retry_mode = false;
+            const std::string raw_output = llm_inference_->infer_raw(response_phase_prompt);
+
+            std::string assistant_response;
+            if (ToolIOProtocol::try_parse_assistant_response_strict(raw_output, assistant_response)) {
+                response = assistant_response;
                 break;
             }
 
-            working_prompt +=
-                "上記の tool_result を読み、必要なら追加で tool_call を出力してください。"
-                "不要なら通常の最終応答を返してください。\n";
+            const std::string cleaned = LLMInference::cleanup_response(raw_output);
+            if (!cleaned.empty() &&
+                !has_tool_markup(raw_output) &&
+                !looks_like_contract_or_instruction_echo(cleaned)) {
+                if (debug_mode_) {
+                    std::cout << "[ResponsePhaseFallback] untagged_natural_response_accepted\n";
+                }
+                response = cleaned;
+                break;
+            }
+
+            if (debug_mode_) {
+                std::cout << "[ResponsePhaseViolation] invalid_assistant_response_format\n";
+                std::cout << "[ResponsePhaseViolation] raw_preview=" << preview_text(raw_output, 600) << "\n";
+            }
+
+            if (response_contract_retry_budget > 0) {
+                --response_contract_retry_budget;
+                strict_response_retry_mode = true;
+                continue;
+            }
+
+            response = "ごめん、出力形式が崩れたので返答を作り直すね。もう一度だけ同じ内容を送って。";
+            break;
         }
         
         if (debug_mode_) {
@@ -533,6 +700,65 @@ void EmotionalAgent::print_debug_info() const {
     std::cout << "\n=== 長期メモリ ===\n";
     std::cout << "エピソード数: " << get_episode_count() << "\n";
     std::cout << "==========================\n\n";
+}
+
+std::string EmotionalAgent::build_prompt_preview(const std::string& user_input) {
+    if (!initialized_) {
+        return "[エラー] エージェントが初期化されていません。";
+    }
+
+    if (!prompt_orchestrator_ || !emotion_engine_ || !memory_controller_) {
+        return "[エラー] プロンプト生成に必要なモジュールが初期化されていません。";
+    }
+
+    const auto original_sections = prompt_orchestrator_->get_system_log_sections();
+
+    try {
+        clear_system_log_sections();
+
+        if (tool_use_enabled_ && tool_executor_) {
+            const auto tools = tool_executor_->list_tools();
+            if (!tools.empty()) {
+                add_system_log_section("Tool Interface", ToolIOProtocol::build_tool_guide(tools));
+
+                const auto has_number_guess_tool = std::any_of(
+                    tools.begin(),
+                    tools.end(),
+                    [](const ToolSpec& spec) {
+                        return spec.name == "number_guess_game";
+                    }
+                );
+
+                if (has_number_guess_tool) {
+                    add_system_log_section(
+                        "Game Tool Policy",
+                        "ユーザーが数当てゲームを希望した場合、推測や判定を文章で決め打ちせず"
+                        " number_guess_game を使って進行してください。"
+                        "開始時は action=start、進行中の判定は action=guess、"
+                        "状態確認は action=status、終了/やり直しは action=reset を優先してください。"
+                        "数値の正誤判定は必ずツール結果に従ってください。"
+                    );
+                }
+            }
+        }
+
+        add_system_log_section(
+            "Output Contract",
+            ToolIOProtocol::build_assistant_contract_guide()
+        );
+
+        std::string preview_prompt = prompt_orchestrator_->build_final_prompt(
+            user_input,
+            *emotion_engine_,
+            *memory_controller_
+        );
+
+        prompt_orchestrator_->set_system_log_sections(original_sections);
+        return preview_prompt;
+    } catch (...) {
+        prompt_orchestrator_->set_system_log_sections(original_sections);
+        throw;
+    }
 }
 
 void EmotionalAgent::consolidate_memories() {

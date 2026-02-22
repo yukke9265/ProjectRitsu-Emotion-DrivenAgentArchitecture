@@ -166,6 +166,13 @@ public:
      */
     void print_debug_info() const;
 
+    /**
+     * @brief 状態を更新せずに最終プロンプトを生成して取得
+     * @param user_input プロンプト生成時のユーザー入力（省略可）
+     * @return 生成された最終プロンプト
+     */
+    std::string build_prompt_preview(const std::string& user_input = "");
+
 private:
     // 5つのモジュール
     std::unique_ptr<InputAnalyzer> input_analyzer_;

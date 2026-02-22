@@ -51,6 +51,14 @@ public:
     const std::string& get_tone_instruction() const { return tone_instruction_; }
 
     /**
+     * @brief 返答スタイル指示を設定
+     * @param response_style_instruction 返答スタイル指示
+     */
+    void set_response_style_instruction(const std::string& response_style_instruction);
+
+    const std::string& get_response_style_instruction() const { return response_style_instruction_; }
+
+    /**
      * @brief システムプロンプトに挿入する構造化ログセクションを追加
      * @param section_name セクション名
      * @param content ログ本文
@@ -89,6 +97,7 @@ public:
 private:
     std::string system_prompt_;      // 基本システムプロンプト
     std::string tone_instruction_;   // トーン制御の指示
+    std::string response_style_instruction_; // 返答スタイル指示
     std::vector<StructuredLogSection> system_log_sections_; // 構造化システムログ
     int max_episodes_;               // 記憶検索の最大件数
     int short_term_turns_;           // 短期メモリの表示ターン数
@@ -98,6 +107,20 @@ private:
      * @return システムログのテキスト
      */
     std::string format_system_logs() const;
+
+    /**
+     * @brief 指定セクションを除外して構造化システムログをプロンプト用テキストに変換
+     * @param excluded_section_name 除外するセクション名
+     * @return システムログのテキスト
+     */
+    std::string format_system_logs_excluding(const std::string& excluded_section_name) const;
+
+    /**
+     * @brief 指定名のシステムログセクション本文を取得
+     * @param section_name セクション名
+     * @return セクション本文（未存在時は空文字）
+     */
+    std::string find_system_log_section(const std::string& section_name) const;
 
     /**
      * @brief 感情状態をプロンプト用テキストに変換

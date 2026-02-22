@@ -482,6 +482,70 @@ bool validate_object_schema(
     return true;
 }
 
+bool is_all_whitespace(const std::string& text) {
+    return std::all_of(text.begin(), text.end(), [](unsigned char c) {
+        return std::isspace(c) != 0;
+    });
+}
+
+bool extract_tag_block_strict(
+    const std::string& text,
+    const std::string& open_tag,
+    const std::string& close_tag,
+    std::string& out_block) {
+
+    const size_t open = text.find(open_tag);
+    if (open == std::string::npos) {
+        return false;
+    }
+
+    if (!is_all_whitespace(text.substr(0, open))) {
+        return false;
+    }
+
+    const size_t content_start = open + open_tag.size();
+    const size_t close = text.find(close_tag, content_start);
+    if (close == std::string::npos) {
+        return false;
+    }
+
+    const size_t after_close = close + close_tag.size();
+    if (!is_all_whitespace(text.substr(after_close))) {
+        return false;
+    }
+
+    if (text.find(open_tag, content_start) != std::string::npos) {
+        return false;
+    }
+    if (text.find(close_tag, after_close) != std::string::npos) {
+        return false;
+    }
+
+    out_block = text.substr(content_start, close - content_start);
+    return true;
+}
+
+bool extract_tag_block_relaxed(
+    const std::string& text,
+    const std::string& open_tag,
+    const std::string& close_tag,
+    std::string& out_block) {
+
+    const size_t open = text.find(open_tag);
+    if (open == std::string::npos) {
+        return false;
+    }
+
+    const size_t content_start = open + open_tag.size();
+    const size_t close = text.find(close_tag, content_start);
+    if (close == std::string::npos) {
+        return false;
+    }
+
+    out_block = text.substr(content_start, close - content_start);
+    return true;
+}
+
 }
 
 void ToolRegistryExecutor::register_tool(const ToolSpec& spec, ToolHandler handler) {
@@ -588,12 +652,13 @@ std::string ToolIOProtocol::build_tool_guide(const std::vector<ToolSpec>& tools)
     }
 
     oss << "あなたは必要なときにツールを呼び出してよいです。\n";
-    oss << "ツール呼び出し時は、必ず以下の形式だけを出力してください（他の文章は禁止）:\n\n";
+    oss << "ツール呼び出し時は、必ず tool_call のみを出力してください（他の文章は禁止）:\n\n";
     oss << "<tool_call>\n";
     oss << "name: <tool_name>\n";
     oss << "input:\n";
     oss << "<tool_input_text_or_json>\n";
-    oss << "</tool_call>\n\n";
+    oss << "</tool_call>\n";
+    oss << "\n";
     oss << "利用可能ツール一覧:\n";
 
     for (const auto& tool : tools) {
@@ -608,22 +673,205 @@ std::string ToolIOProtocol::build_tool_guide(const std::vector<ToolSpec>& tools)
     return oss.str();
 }
 
+std::string ToolIOProtocol::build_output_contract_guide(bool allow_tool_call) {
+    std::ostringstream oss;
+
+    oss << "出力契約（現行2フェーズ運用）:\n";
+    if (allow_tool_call) {
+        oss << "- Tool Phase: <tool_call> ブロックのみを出力。不要時は name: __no_tool__ / input: {}。\n";
+        oss << "  形式:\n";
+        oss << "  <tool_call>\n";
+        oss << "  name: <tool_name_or___no_tool__>\n";
+        oss << "  input:\n";
+        oss << "  <tool_input_text_or_json>\n";
+        oss << "  </tool_call>\n";
+    }
+    else {
+        oss << "- Tool Phase は無効（このターンではツール呼び出しなし）。\n";
+    }
+
+    oss << "- Response Phase: <assistant_response> を推奨。\n";
+    oss << "  形式:\n";
+    oss << "  <assistant_response>\n";
+    oss << "  <ユーザーに返す自然な応答本文>\n";
+    oss << "  </assistant_response>\n";
+    oss << "- 禁止: 見出し・分析メモ・契約文の再掲・不要な前置き。\n";
+    return oss.str();
+}
+
+std::string ToolIOProtocol::build_tool_call_contract_guide() {
+    std::ostringstream oss;
+    oss << "出力契約（Tool Phase / 厳守）:\n";
+    oss << "- 出力は tool_call ブロック1つのみ。\n";
+    oss << "- それ以外の前置き・見出し・説明文は禁止。\n\n";
+    oss << "<tool_call>\n";
+    oss << "name: <tool_name_or___no_tool__>\n";
+    oss << "input:\n";
+    oss << "<tool_input_text_or_json>\n";
+    oss << "</tool_call>\n";
+    return oss.str();
+}
+
+std::string ToolIOProtocol::build_assistant_contract_guide() {
+    std::ostringstream oss;
+    oss << "出力契約（Response Phase）:\n";
+    oss << "- 推奨形式は assistant_response ブロック1つのみ。\n";
+    oss << "- 追加の見出し・分析メモ・注意書きは出力しない。\n\n";
+    oss << "<assistant_response>\n";
+    oss << "<ユーザーに返す自然な応答本文>\n";
+    oss << "</assistant_response>\n";
+    return oss.str();
+}
+
+bool ToolIOProtocol::try_parse_assistant_response(const std::string& llm_output, std::string& out_response) {
+    const std::string assistant_channel_open = "<assistant_channel>";
+    const std::string assistant_channel_close = "</assistant_channel>";
+    const std::string open_tag = "<assistant_response>";
+    const std::string close_tag = "</assistant_response>";
+
+    std::string channel_block;
+    if (extract_tag_block_relaxed(llm_output, assistant_channel_open, assistant_channel_close, channel_block)) {
+        std::string block;
+        if (!extract_tag_block_relaxed(channel_block, open_tag, close_tag, block)) {
+            return false;
+        }
+
+        out_response = trim_copy(block);
+        return !out_response.empty();
+    }
+
+    std::string block;
+    if (!extract_tag_block_relaxed(llm_output, open_tag, close_tag, block)) {
+        return false;
+    }
+
+    out_response = trim_copy(block);
+    return !out_response.empty();
+}
+
 bool ToolIOProtocol::try_parse_tool_call(const std::string& llm_output, ToolCall& out_call) {
+    const std::string tool_channel_open = "<tool_channel>";
+    const std::string tool_channel_close = "</tool_channel>";
     const std::string open_tag = "<tool_call>";
     const std::string close_tag = "</tool_call>";
 
-    const size_t open = llm_output.find(open_tag);
-    if (open == std::string::npos) {
+    std::string channel_block;
+    if (extract_tag_block_relaxed(llm_output, tool_channel_open, tool_channel_close, channel_block)) {
+        std::string block;
+        if (!extract_tag_block_relaxed(channel_block, open_tag, close_tag, block)) {
+            return false;
+        }
+
+        std::istringstream iss(block);
+        std::string line;
+
+        std::string tool_name;
+        std::ostringstream input_builder;
+        bool reading_input = false;
+
+        while (std::getline(iss, line)) {
+            const std::string trimmed = trim_copy(line);
+
+            if (!reading_input && trimmed.rfind("name:", 0) == 0) {
+                tool_name = trim_copy(trimmed.substr(5));
+                continue;
+            }
+
+            if (!reading_input && trimmed.rfind("input:", 0) == 0) {
+                reading_input = true;
+                std::string same_line_input = trim_copy(trimmed.substr(6));
+                if (!same_line_input.empty()) {
+                    input_builder << same_line_input;
+                }
+                continue;
+            }
+
+            if (reading_input) {
+                if (input_builder.tellp() > 0) {
+                    input_builder << "\n";
+                }
+                input_builder << line;
+            }
+        }
+
+        tool_name = trim_copy(tool_name);
+        if (tool_name.empty()) {
+            return false;
+        }
+
+        out_call.name = tool_name;
+        out_call.input = trim_copy(input_builder.str());
+        return true;
+    }
+
+    std::string block;
+    if (!extract_tag_block_relaxed(llm_output, open_tag, close_tag, block)) {
         return false;
     }
 
-    const size_t close = llm_output.find(close_tag, open + open_tag.size());
-    if (close == std::string::npos || close <= open) {
+    std::istringstream iss(block);
+    std::string line;
+
+    std::string tool_name;
+    std::ostringstream input_builder;
+    bool reading_input = false;
+
+    while (std::getline(iss, line)) {
+        const std::string trimmed = trim_copy(line);
+
+        if (!reading_input && trimmed.rfind("name:", 0) == 0) {
+            tool_name = trim_copy(trimmed.substr(5));
+            continue;
+        }
+
+        if (!reading_input && trimmed.rfind("input:", 0) == 0) {
+            reading_input = true;
+            std::string same_line_input = trim_copy(trimmed.substr(6));
+            if (!same_line_input.empty()) {
+                input_builder << same_line_input;
+            }
+            continue;
+        }
+
+        if (reading_input) {
+            if (input_builder.tellp() > 0) {
+                input_builder << "\n";
+            }
+            input_builder << line;
+        }
+    }
+
+    tool_name = trim_copy(tool_name);
+    if (tool_name.empty()) {
         return false;
     }
 
-    const size_t block_start = open + open_tag.size();
-    const std::string block = llm_output.substr(block_start, close - block_start);
+    out_call.name = tool_name;
+    out_call.input = trim_copy(input_builder.str());
+    return true;
+}
+
+bool ToolIOProtocol::try_parse_assistant_response_strict(const std::string& llm_output, std::string& out_response) {
+    const std::string open_tag = "<assistant_response>";
+    const std::string close_tag = "</assistant_response>";
+
+    std::string block;
+    if (!extract_tag_block_strict(llm_output, open_tag, close_tag, block)) {
+        return false;
+    }
+
+    out_response = trim_copy(block);
+    return !out_response.empty();
+}
+
+bool ToolIOProtocol::try_parse_tool_call_strict(const std::string& llm_output, ToolCall& out_call) {
+    const std::string open_tag = "<tool_call>";
+    const std::string close_tag = "</tool_call>";
+
+    std::string block;
+    if (!extract_tag_block_strict(llm_output, open_tag, close_tag, block)) {
+        return false;
+    }
 
     std::istringstream iss(block);
     std::string line;

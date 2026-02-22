@@ -192,13 +192,23 @@ private:
 /**
  * @brief LLMとのツール入出力プロトコル
  *
- * LLMがツールを呼ぶときの出力フォーマット（厳守）:
+ * 現行運用（中間案）:
+ * - Tool Phase: <tool_call> ブロックのみを厳格に許可
+ * - Response Phase: <assistant_response> を推奨（自然文フォールバックは上位層で扱う）
+ *
+ * Tool Phase の出力フォーマット（厳守）:
  * @code
  * <tool_call>
  * name: get_time
  * input:
  * {"timezone":"Asia/Tokyo"}
  * </tool_call>
+ *
+ * Response Phase の推奨フォーマット:
+ * @code
+ * <assistant_response>
+ * こんにちは。今日はどんなことを試しますか？
+ * </assistant_response>
  * @endcode
  *
  * ツール実行結果をLLMへ返すフォーマット:
@@ -214,7 +224,14 @@ private:
 class ToolIOProtocol {
 public:
     static std::string build_tool_guide(const std::vector<ToolSpec>& tools);
+    // 互換用途: 旧呼び出し側向けの統合契約ガイド（内部は現行2フェーズ方針を説明）
+    static std::string build_output_contract_guide(bool allow_tool_call);
+    static std::string build_tool_call_contract_guide();
+    static std::string build_assistant_contract_guide();
+    static bool try_parse_assistant_response(const std::string& llm_output, std::string& out_response);
     static bool try_parse_tool_call(const std::string& llm_output, ToolCall& out_call);
+    static bool try_parse_assistant_response_strict(const std::string& llm_output, std::string& out_response);
+    static bool try_parse_tool_call_strict(const std::string& llm_output, ToolCall& out_call);
     static std::string build_tool_result_block(const ToolCall& call, const ToolResult& result);
 
 private:

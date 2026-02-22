@@ -15,6 +15,7 @@ LLMInference::LLMInference(
     params_.model.path = model_path;
     params_.n_gpu_layers = n_gpu_layers;
     params_.n_ctx = n_ctx;
+    params_.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
 }
 
 LLMInference::~LLMInference() {
