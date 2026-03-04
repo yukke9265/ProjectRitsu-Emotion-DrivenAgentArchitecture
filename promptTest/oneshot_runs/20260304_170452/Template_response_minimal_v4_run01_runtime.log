@@ -1,0 +1,17 @@
+[2026-03-04 17:04:52] One-shot log initialized
+[2026-03-04 17:04:52] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_response_minimal_v4.md
+[2026-03-04 17:04:52] start: user_input_length=0
+[2026-03-04 17:04:52] loaded_system_prompt_bytes=365
+[2026-03-04 17:04:52] model_path=D:\0_OllamaModels\WS\models\LFM2.5-1.2B-Instruct-BF16.gguf
+[2026-03-04 17:04:52] agent_initialize_begin
+[2026-03-04 17:04:54] agent_initialize_success
+[2026-03-04 17:04:54] raw_output_logging=enabled
+[2026-03-04 17:04:54] response_phase_only_mode=enabled
+[raw_output_begin] phase=response
+返答は完全に自然な日本語で完結させます。<|im_end|>
+[raw_output_end] phase=response
+[2026-03-04 17:04:56] inference_done_ms=1362
+[2026-03-04 17:04:56] response_length=60
+[2026-03-04 17:04:56] response_text_begin
+[2026-03-04 17:04:56] 返答は完全に自然な日本語で完結させます。
+[2026-03-04 17:04:56] response_text_end

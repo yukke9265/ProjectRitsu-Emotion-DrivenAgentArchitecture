@@ -1,0 +1,27 @@
+[2026-03-04 16:50:44] One-shot log initialized
+[2026-03-04 16:50:44] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_tool_minimal_v3.md
+[2026-03-04 16:50:44] start: user_input_length=0
+[2026-03-04 16:50:44] loaded_system_prompt_bytes=241
+[2026-03-04 16:50:44] agent_initialize_begin
+[2026-03-04 16:50:46] agent_initialize_success
+[2026-03-04 16:50:46] raw_output_logging=enabled
+[2026-03-04 16:50:46] tool_phase_only_mode=enabled
+[raw_output_begin] phase=tool-only index=1
+感情状態の数値や分析説明は出さず、自然な日本語の応答本文だけを返してください。
+</think>
+
+<tool_call>
+name: number_guess_game
+input: { "action": "start", "min": 1, "max": 50 }
+</tool_call>
+<SPECIAL_12>
+[raw_output_end] phase=tool-only index=1
+[2026-03-04 16:50:52] inference_done_ms=5851
+[2026-03-04 16:50:52] response_length=98
+[2026-03-04 16:50:52] response_text_begin
+[2026-03-04 16:50:52] <tool_call>
+name: number_guess_game
+input:
+{ "action": "start", "min": 1, "max": 50 }
+</tool_call>
+[2026-03-04 16:50:52] response_text_end

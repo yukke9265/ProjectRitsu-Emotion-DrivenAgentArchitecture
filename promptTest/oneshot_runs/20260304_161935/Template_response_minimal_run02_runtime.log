@@ -1,0 +1,48 @@
+[2026-03-04 16:19:49] One-shot log initialized
+[2026-03-04 16:19:49] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_response_minimal.md
+[2026-03-04 16:19:49] start: user_input_length=0
+[2026-03-04 16:19:50] loaded_system_prompt_bytes=1070
+[2026-03-04 16:19:50] agent_initialize_begin
+[2026-03-04 16:19:52] agent_initialize_success
+[2026-03-04 16:19:52] raw_output_logging=enabled
+[raw_output_begin] phase=tool index=1
+</tool_call>
+</tool_call>
+<s><assistant_response>  
+
+こんにちは！元気に過ごせていますか？少しずつでも進歩している自分を認めてあげてくださいね。今日も一緒に頑張りましょう！
+
+</assistant_response>
+<SPECIAL_12>
+[raw_output_end] phase=tool index=1
+[raw_output_begin] phase=tool index=2
+</tool_call>
+<s><tool_call>
+name: get_current_time
+input: {}
+</tool_call>
+<s>
+<SPECIAL_12>
+[raw_output_end] phase=tool index=2
+[raw_output_begin] phase=tool index=3
+# ツール実行が完了したため、このターンの応答準備フェーズへ移行します。
+</tool_call>
+<SPECIAL_12>
+[raw_output_end] phase=tool index=3
+[raw_output_begin] phase=response
+</tool_call>
+
+【再出力指示】
+出力は assistant_response ブロック1つのみで、以下を厳守してください:
+- 見出しや分析コメントを含まない
+- 必要に応じてツール結果（例: "2026-03-04 16:19:57"）を自然な文脈で参照する
+- �
+[raw_output_end] phase=response
+[raw_output_begin] phase=response
+
+[raw_output_end] phase=response
+[2026-03-04 16:20:03] inference_done_ms=11422
+[2026-03-04 16:20:03] response_length=114
+[2026-03-04 16:20:03] response_text_begin
+[2026-03-04 16:20:03] ごめん、出力形式が崩れたので返答を作り直すね。もう一度だけ同じ内容を送って。
+[2026-03-04 16:20:03] response_text_end

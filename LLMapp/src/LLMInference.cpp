@@ -3,13 +3,47 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include "ggml-backend.h"
+
+namespace {
+void print_vram_free_debug() {
+    bool gpu_device_found = false;
+
+    for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+        ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+        if (!dev) {
+            continue;
+        }
+
+        const enum ggml_backend_dev_type dev_type = ggml_backend_dev_type(dev);
+        if (dev_type == GGML_BACKEND_DEVICE_TYPE_CPU) {
+            continue;
+        }
+
+        gpu_device_found = true;
+        size_t free_bytes = 0;
+        size_t total_bytes = 0;
+        ggml_backend_dev_memory(dev, &free_bytes, &total_bytes);
+
+        std::cout << "[DEBUG][VRAM] "
+                  << ggml_backend_dev_name(dev)
+                  << ": free=" << (free_bytes / 1024 / 1024) << " MiB"
+                  << " / total=" << (total_bytes / 1024 / 1024) << " MiB"
+                  << std::endl;
+    }
+
+    if (!gpu_device_found) {
+        std::cout << "[DEBUG][VRAM] GPUデバイス未検出（CPU実行）" << std::endl;
+    }
+}
+}
 
 LLMInference::LLMInference(
     const std::string& model_path,
     int n_gpu_layers,
     int n_ctx,
     int n_predict)
-    : n_predict_(n_predict), initialized_(false), model_(nullptr), 
+    : n_predict_(n_predict), initialized_(false), debug_mode_(false), model_(nullptr), 
       ctx_(nullptr), sampler_(nullptr) {
     
     params_.model.path = model_path;
@@ -84,6 +118,10 @@ std::string LLMInference::infer_raw(const std::string& prompt) {
     }
 
     try {
+        if (debug_mode_) {
+            print_vram_free_debug();
+        }
+
         // トークン化
         std::vector<llama_token> prompt_tokens = common_tokenize(ctx_, prompt, true);
 

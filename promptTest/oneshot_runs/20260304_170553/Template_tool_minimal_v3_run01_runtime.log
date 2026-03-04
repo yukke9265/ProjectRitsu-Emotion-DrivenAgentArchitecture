@@ -1,0 +1,27 @@
+[2026-03-04 17:06:13] One-shot log initialized
+[2026-03-04 17:06:13] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_tool_minimal_v3.md
+[2026-03-04 17:06:13] start: user_input_length=0
+[2026-03-04 17:06:13] loaded_system_prompt_bytes=241
+[2026-03-04 17:06:13] model_path=D:\0_OllamaModels\WS\models\NVIDIA-Nemotron-Nano-9B-v2-Japanese-Q4_K_M.gguf
+[2026-03-04 17:06:13] agent_initialize_begin
+[2026-03-04 17:06:16] agent_initialize_success
+[2026-03-04 17:06:16] raw_output_logging=enabled
+[2026-03-04 17:06:16] tool_phase_only_mode=enabled
+[raw_output_begin] phase=tool-only index=1
+</think>
+
+<tool_call>
+name: finish_tool_planning
+input: {}
+</tool_call>
+<SPECIAL_12>
+[raw_output_end] phase=tool-only index=1
+[2026-03-04 17:06:20] inference_done_ms=4833
+[2026-03-04 17:06:20] response_length=61
+[2026-03-04 17:06:20] response_text_begin
+[2026-03-04 17:06:20] <tool_call>
+name: finish_tool_planning
+input:
+{}
+</tool_call>
+[2026-03-04 17:06:20] response_text_end

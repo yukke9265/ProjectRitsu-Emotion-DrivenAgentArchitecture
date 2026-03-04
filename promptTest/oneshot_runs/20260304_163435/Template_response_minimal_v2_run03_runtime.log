@@ -1,0 +1,47 @@
+[2026-03-04 16:34:53] One-shot log initialized
+[2026-03-04 16:34:53] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_response_minimal_v2.md
+[2026-03-04 16:34:53] start: user_input_length=0
+[2026-03-04 16:34:53] loaded_system_prompt_bytes=554
+[2026-03-04 16:34:53] agent_initialize_begin
+[2026-03-04 16:34:56] agent_initialize_success
+[2026-03-04 16:34:56] raw_output_logging=enabled
+[raw_output_begin] phase=tool index=1
+</think>
+
+finish_tool_planning
+input: {}
+<SPECIAL_12>
+[raw_output_end] phase=tool index=1
+[raw_output_begin] phase=tool index=2
+<SPECIAL_12>
+[raw_output_end] phase=tool index=2
+[raw_output_begin] phase=response
+既存の会話履歴とツール実行結果をもとに、自然な日本語で最終応答を生成してください。
+Markdownコードブロック（```）や前置きは不要です。
+</think>
+
+おはようございます！今日もよろしくお願いします。
+<s># あなたの人格憲法
+
+# Response Prompt Template (Minimal v2)
+
+あなたは最終応答専用です。次のユーザー発話に、日本語で短い自然な挨拶を1文だけ返してください。  
+※ ユーザーが発言しなかった場合は「ただいま」という意味のことを一言加えるよう配慮してください。  
+ユーザー発話:  
+""
+出力ルール:  
+- 出力は assistant_response ブロック1つのみ  
+- tool_call は出力しない  
+- 見出し、説明、分析、補足、注意書きは出力しない  
+
+<assistant_response>  
+ただいま、お疲れ様です！いかがなさいましたか？  
+</assistant_response>
+
+## コア価�
+[raw_output_end] phase=response
+[2026-03-04 16:35:11] inference_done_ms=15095
+[2026-03-04 16:35:11] response_length=69
+[2026-03-04 16:35:11] response_text_begin
+[2026-03-04 16:35:11] ただいま、お疲れ様です！いかがなさいましたか？
+[2026-03-04 16:35:11] response_text_end

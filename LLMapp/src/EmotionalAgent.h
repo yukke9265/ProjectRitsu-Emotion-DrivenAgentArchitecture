@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "InputAnalyzer.h"
+#include "ToolAnalyzer.h"
 #include "EmotionEngine.h"
 #include "MemoryController.h"
 #include "PromptOrchestrator.h"
@@ -169,13 +170,17 @@ public:
     /**
      * @brief 状態を更新せずに最終プロンプトを生成して取得
      * @param user_input プロンプト生成時のユーザー入力（省略可）
+     * @param phase プロンプト生成フェーズ（Tool/Response）
      * @return 生成された最終プロンプト
      */
-    std::string build_prompt_preview(const std::string& user_input = "");
+    std::string build_prompt_preview(
+        const std::string& user_input = "",
+        PromptOrchestrator::PromptPhase phase = PromptOrchestrator::PromptPhase::Response);
 
 private:
     // 5つのモジュール
     std::unique_ptr<InputAnalyzer> input_analyzer_;
+    std::unique_ptr<ToolAnalyzer> tool_analyzer_;
     std::unique_ptr<EmotionEngine> emotion_engine_;
     std::unique_ptr<MemoryController> memory_controller_;
     std::unique_ptr<PromptOrchestrator> prompt_orchestrator_;

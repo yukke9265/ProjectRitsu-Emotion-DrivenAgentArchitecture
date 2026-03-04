@@ -1,0 +1,78 @@
+[2026-03-04 16:38:58] One-shot log initialized
+[2026-03-04 16:38:58] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_response_minimal_v3.md
+[2026-03-04 16:38:58] start: user_input_length=0
+[2026-03-04 16:38:58] loaded_system_prompt_bytes=368
+[2026-03-04 16:38:58] agent_initialize_begin
+[2026-03-04 16:39:00] agent_initialize_success
+[2026-03-04 16:39:00] raw_output_logging=enabled
+[raw_output_begin] phase=response
+user からの入力が空または不完全な場合でも、常に1つの助手応答ブロックを生成してください。
+
+---
+
+# 現在のシステム状態
+
+## Startup
+```text
+初回起動ターンです。ユーザー入力はありません。最初の挨拶を自然に1回だけ生成してください。
+```
+
+## Tool Interface
+```text
+あなたは必要なときにツールを呼び出してよいです。
+ツール呼び出し時は、必ず tool_call のみを出力してください（他の文章は禁止）:
+
+<tool_call>
+name: <tool_name>
+input:
+<tool_input_text_or_json>
+</tool_call>
+
+利用可能ツール一覧:
+- name: echo
+  description: 受け取った入力文字列をそのまま返します
+  input_schema: 任意の文字列
+- name: finish_tool_planning
+  description: ツールの呼び出しが不要、または全てのツール実行が完了した場合に呼び出します。このツールを呼び出すとツール実行フェーズが
+[raw_output_end] phase=response
+[raw_output_begin] phase=response
+（例）
+<assistant_response>  
+おはようございます！今日もよろしくお願いします。  
+</assistant_response>
+
+ユーザーから「ありがとう」という言葉で会話が終了する可能性があります。
+その場合は、<finish_tool_planning> を呼び出して応答生成フェーズを終了させる必要があります。
+
+---
+
+# 現在のシステム状態
+
+## Startup
+```text
+初回起動ターンです。ユーザー入力はありません。最初の挨拶を自然に1回だけ生成してください。
+```
+
+## Tool Interface
+```text
+あなたは必要なときにツールを呼び出してよいです。
+ツール呼び出し時は、必ず tool_call のみを出力してください（他の文章は禁止）:
+
+<tool_call>
+name: <tool_name>
+input:
+<tool_input_text_or_json>
+</tool_call>
+
+利用可能ツール一覧:
+- name: echo
+  description: 受け取った入力文字列をそのまま返します
+  input_schema: 任意の文字列
+- name: finish_tool_planning
+  description:
+[raw_output_end] phase=response
+[2026-03-04 16:39:14] inference_done_ms=14109
+[2026-03-04 16:39:14] response_length=72
+[2026-03-04 16:39:14] response_text_begin
+[2026-03-04 16:39:14] おはようございます！今日もよろしくお願いします。
+[2026-03-04 16:39:14] response_text_end

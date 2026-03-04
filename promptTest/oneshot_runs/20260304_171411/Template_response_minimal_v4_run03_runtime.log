@@ -1,0 +1,21 @@
+[2026-03-04 17:14:24] One-shot log initialized
+[2026-03-04 17:14:24] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_response_minimal_v4.md
+[2026-03-04 17:14:24] start: user_input_length=0
+[2026-03-04 17:14:24] loaded_system_prompt_bytes=365
+[2026-03-04 17:14:24] model_path=d:\0_OllamaModels\WS\models\Qwen_Qwen3-4B-Instruct-2507-Q5_K_M.gguf
+[2026-03-04 17:14:24] agent_initialize_begin
+[2026-03-04 17:14:25] agent_initialize_success
+[2026-03-04 17:14:25] raw_output_logging=enabled
+[2026-03-04 17:14:25] response_phase_only_mode=enabled
+[raw_output_begin] phase=response
+tool_call を出力する必要がない場合は、明示的に「no tool call」を記述してください。
+
+<assistant_response>
+おはよう！  
+</assistant_response><|im_end|>
+[raw_output_end] phase=response
+[2026-03-04 17:14:33] inference_done_ms=8468
+[2026-03-04 17:14:33] response_length=15
+[2026-03-04 17:14:33] response_text_begin
+[2026-03-04 17:14:33] おはよう！
+[2026-03-04 17:14:33] response_text_end

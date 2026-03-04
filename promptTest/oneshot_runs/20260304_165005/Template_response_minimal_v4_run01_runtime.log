@@ -1,0 +1,96 @@
+[2026-03-04 16:50:06] One-shot log initialized
+[2026-03-04 16:50:06] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_response_minimal_v4.md
+[2026-03-04 16:50:06] start: user_input_length=0
+[2026-03-04 16:50:06] loaded_system_prompt_bytes=365
+[2026-03-04 16:50:06] agent_initialize_begin
+[2026-03-04 16:50:08] agent_initialize_success
+[2026-03-04 16:50:08] raw_output_logging=enabled
+[raw_output_begin] phase=tool index=1
+複数行であっても、<tool_call>は1ブロックのみです。
+
+
+# ユーザー発話
+
+おはよう、短く一言で挨拶して
+<s>
+
+【Tool Phase 出力契約 / 厳守】
+
+必須: <tool_call> ブロック1つのみ。前置き・説明・コメント不要。
+
+形式:
+<tool_call>
+name: <ツール名>
+input: <JSON形式の入力>
+</tool_call>
+
+例1（JSON入力）:
+<tool_call>
+name: number_guess_game
+input: { "action": "start", "min": 1, "max": 100 }
+</tool_call>
+
+例2（シンプル入力）:
+<tool_call>
+name: get_current_time
+input: {}
+</tool_call>
+
+例3（ツール終了）:
+<tool_call>
+name: finish_tool_planning
+input: {}
+</tool_call>
+
+禁止事項:
+- Markdownコードブロック（```）で囲まない
+- 「それでは」「まず」などの前置き不要
+- tool_callブロックの外に説明文を書かない
+- �
+[raw_output_end] phase=tool index=1
+[raw_output_begin] phase=tool index=2
+<SPECIAL_12>
+[raw_output_end] phase=tool index=2
+[raw_output_begin] phase=tool index=3
+<s># あなたの人格憲法
+
+# Response Prompt Template (Minimal v4)
+
+次のユーザー発話に対して、返答本文を1文だけ出力してください。  
+
+**例**: "おはよう！"  
+
+---  
+
+## ユーザー入力（最新ターン）:  
+
+**「おはよう、短く一言で挨拶して」**  
+
+---  
+
+### 応答ルール:  
+
+1. **「おはよう！」の単一センテンスのみ** を生成すること（前置き・解説・改行禁止）  
+2. 自然な日本語で、**感情表現を控えめに活かす**（例: 「お疲れ様でした」→「朝から元気ですね！」など）  
+3. 時刻情報やログは一切含まない  
+
+---  
+
+### 感情調整ガイド  
+- **Valenceが低い場合**: 誠実さを保ちつつ、物静かなトーンで返答  
+- **Arousalが高い場合**: 一瞬間押し
+[raw_output_end] phase=tool index=3
+[raw_output_begin] phase=response
+</tool_call>
+
+# ユーザー発話
+
+おはよう、短く一言で挨拶して
+<s><assistant_response>おはよう！</assistant_response>
+<SPECIAL_12>
+[raw_output_end] phase=response
+[2026-03-04 16:50:26] inference_done_ms=18534
+[2026-03-04 16:50:26] response_length=15
+[2026-03-04 16:50:26] response_text_begin
+[2026-03-04 16:50:26] おはよう！
+[2026-03-04 16:50:26] response_text_end

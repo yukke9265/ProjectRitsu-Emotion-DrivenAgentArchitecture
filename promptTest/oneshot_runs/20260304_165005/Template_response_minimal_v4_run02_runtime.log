@@ -1,0 +1,26 @@
+[2026-03-04 16:50:27] One-shot log initialized
+[2026-03-04 16:50:27] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_response_minimal_v4.md
+[2026-03-04 16:50:27] start: user_input_length=0
+[2026-03-04 16:50:27] loaded_system_prompt_bytes=365
+[2026-03-04 16:50:27] agent_initialize_begin
+[2026-03-04 16:50:29] agent_initialize_success
+[2026-03-04 16:50:29] raw_output_logging=enabled
+[raw_output_begin] phase=response
+ユーザーに直接話しかける自然なセリフを生成してください。
+感情状態の数値や分析説明は出さず、自然な日本語の応答本文だけを返してください。
+
+# ユーザー発話
+
+おはよう、短く一言で挨拶して
+<SPECIAL_12>
+[raw_output_end] phase=response
+[2026-03-04 16:50:32] inference_done_ms=3108
+[2026-03-04 16:50:32] response_length=268
+[2026-03-04 16:50:32] response_text_begin
+[2026-03-04 16:50:32] ユーザーに直接話しかける自然なセリフを生成してください。
+感情状態の数値や分析説明は出さず、自然な日本語の応答本文だけを返してください。
+
+# ユーザー発話
+
+おはよう、短く一言で挨拶して
+[2026-03-04 16:50:32] response_text_end

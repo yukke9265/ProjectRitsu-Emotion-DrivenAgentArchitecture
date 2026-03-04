@@ -1,0 +1,24 @@
+[2026-03-04 17:04:56] One-shot log initialized
+[2026-03-04 17:04:56] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_tool_minimal_v3.md
+[2026-03-04 17:04:56] start: user_input_length=0
+[2026-03-04 17:04:56] loaded_system_prompt_bytes=241
+[2026-03-04 17:04:56] model_path=D:\0_OllamaModels\WS\models\LFM2.5-1.2B-Instruct-BF16.gguf
+[2026-03-04 17:04:56] agent_initialize_begin
+[2026-03-04 17:04:57] agent_initialize_success
+[2026-03-04 17:04:57] raw_output_logging=enabled
+[2026-03-04 17:04:57] tool_phase_only_mode=enabled
+[raw_output_begin] phase=tool-only index=1
+数値を正確に取得するように注意してください。")
+```
+
+状況に応じたツール呼び出しを実行し、フィードバックを提供してください。<|im_end|>
+[raw_output_end] phase=tool-only index=1
+[raw_output_begin] phase=tool-only index=2
+数値を正確に表示・フォーマットしてください。」
+<|im_end|>
+[raw_output_end] phase=tool-only index=2
+[2026-03-04 17:04:59] inference_done_ms=2426
+[2026-03-04 17:04:59] response_length=114
+[2026-03-04 17:04:59] response_text_begin
+[2026-03-04 17:04:59] ごめん、出力形式が崩れたので返答を作り直すね。もう一度だけ同じ内容を送って。
+[2026-03-04 17:04:59] response_text_end

@@ -1,0 +1,37 @@
+[2026-03-04 16:50:32] One-shot log initialized
+[2026-03-04 16:50:32] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_response_minimal_v4.md
+[2026-03-04 16:50:32] start: user_input_length=0
+[2026-03-04 16:50:32] loaded_system_prompt_bytes=365
+[2026-03-04 16:50:32] agent_initialize_begin
+[2026-03-04 16:50:34] agent_initialize_success
+[2026-03-04 16:50:34] raw_output_logging=enabled
+[raw_output_begin] phase=response
+ユーザーに返す応答本文を1つだけ出力してください。
+
+
+
+# 現在のあなたの感情状態と応答トーン
+
+感情状態: 喜び（弱い） | 感情価: ニュートラル (0.0171429) | 覚醒度: 0.03
+
+
+
+あなたは今、落ち着いた中立的な気分です。バランスの取れたトーンで回答してください。
+少し活気を持たせた表現を心がけてください。
+<SPECIAL_12>
+[raw_output_end] phase=response
+[2026-03-04 16:50:44] inference_done_ms=9452
+[2026-03-04 16:50:44] response_length=322
+[2026-03-04 16:50:44] response_text_begin
+[2026-03-04 16:50:44] ユーザーに返す応答本文を1つだけ出力してください。
+
+
+
+# 現在のあなたの感情状態と応答トーン
+
+
+
+
+あなたは今、落ち着いた中立的な気分です。バランスの取れたトーンで回答してください。
+少し活気を持たせた表現を心がけてください。
+[2026-03-04 16:50:44] response_text_end

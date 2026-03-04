@@ -15,6 +15,8 @@
 #include <cstdio>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <ctime>
 
 namespace {
 std::string trim_copy(const std::string& text) {
@@ -76,6 +78,86 @@ std::string normalize_command_token(const std::string& input) {
     }
 
     return token;
+}
+
+bool read_text_file(const std::string& file_path, std::string& out_content, std::string& out_error) {
+    std::ifstream ifs(file_path, std::ios::binary);
+    if (!ifs.is_open()) {
+        out_error = "ファイルを開けませんでした: " + file_path;
+        return false;
+    }
+
+    std::ostringstream buffer;
+    buffer << ifs.rdbuf();
+    if (!ifs.good() && !ifs.eof()) {
+        out_error = "ファイル読み込み中にエラーが発生しました: " + file_path;
+        return false;
+    }
+
+    out_content = buffer.str();
+
+    const unsigned char bom[] = {0xEF, 0xBB, 0xBF};
+    if (out_content.size() >= 3 &&
+        static_cast<unsigned char>(out_content[0]) == bom[0] &&
+        static_cast<unsigned char>(out_content[1]) == bom[1] &&
+        static_cast<unsigned char>(out_content[2]) == bom[2]) {
+        out_content.erase(0, 3);
+    }
+
+    return true;
+}
+
+std::string current_local_time_text() {
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t current = std::chrono::system_clock::to_time_t(now);
+    std::tm local_tm{};
+#if defined(_WIN32)
+    localtime_s(&local_tm, &current);
+#else
+    local_tm = *std::localtime(&current);
+#endif
+
+    std::ostringstream oss;
+    oss << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
+    return oss.str();
+}
+
+std::string parent_dir_of_path(const std::string& file_path) {
+    const auto pos = file_path.find_last_of("\\/");
+    if (pos == std::string::npos) {
+        return ".";
+    }
+    return file_path.substr(0, pos);
+}
+
+std::string build_one_shot_log_file_path(const std::string& system_prompt_file_path) {
+    const std::string parent_dir = parent_dir_of_path(system_prompt_file_path);
+    if (parent_dir.empty() || parent_dir == ".") {
+        return "_oneshot_runtime.log";
+    }
+    return parent_dir + "\\_oneshot_runtime.log";
+}
+
+std::string resolve_model_path_for_run() {
+    const char* value = std::getenv("LLMAPP_MODEL_PATH");
+    if (!value) {
+        return DEFAULT_MODEL_PATH;
+    }
+
+    std::string model_path = trim_copy(std::string(value));
+    if (model_path.empty()) {
+        return DEFAULT_MODEL_PATH;
+    }
+
+    return model_path;
+}
+
+void append_one_shot_log_line(const std::string& log_file_path, const std::string& message) {
+    std::ofstream ofs(log_file_path, std::ios::binary | std::ios::app);
+    if (!ofs.is_open()) {
+        return;
+    }
+    ofs << "[" << current_local_time_text() << "] " << message << "\n";
 }
 }
 
@@ -582,6 +664,11 @@ int main(int argc, char** argv) {
 
     // コマンドライン引数のチェック
     bool debug_mode = false;
+    bool run_once_with_system_prompt = false;
+    bool one_shot_tool_phase_only = false;
+    bool one_shot_response_phase_only = false;
+    std::string one_shot_system_prompt_file;
+    std::string one_shot_user_input;
     
     if (argc > 1) {
         std::string arg = argv[1];
@@ -611,6 +698,53 @@ int main(int argc, char** argv) {
             run_analyzer_test_mode(false, "");  // キーワードベースのみ
             return 0;
         }
+        // システムプロンプトファイルで1回だけ推論して終了
+        else if (arg == "--once-system-prompt") {
+            if (argc < 3) {
+                std::cerr << "エラー: --once-system-prompt にはファイルパスが必要です\n";
+                std::cerr << "例: LLMapp.exe --once-system-prompt promptTest/TestPrompt.md\n";
+                return 1;
+            }
+
+            run_once_with_system_prompt = true;
+            one_shot_system_prompt_file = argv[2];
+
+            if (argc > 3) {
+                one_shot_user_input = argv[3];
+            }
+        }
+        // システムプロンプトファイルでTool Phaseのみ1回実行して終了
+        else if (arg == "--once-system-prompt-tool-phase") {
+            if (argc < 3) {
+                std::cerr << "エラー: --once-system-prompt-tool-phase にはファイルパスが必要です\n";
+                std::cerr << "例: LLMapp.exe --once-system-prompt-tool-phase promptTest/Template_tool_minimal_v3.md\n";
+                return 1;
+            }
+
+            run_once_with_system_prompt = true;
+            one_shot_tool_phase_only = true;
+            one_shot_system_prompt_file = argv[2];
+
+            if (argc > 3) {
+                one_shot_user_input = argv[3];
+            }
+        }
+        // システムプロンプトファイルでResponse Phaseのみ1回実行して終了
+        else if (arg == "--once-system-prompt-response-phase") {
+            if (argc < 3) {
+                std::cerr << "エラー: --once-system-prompt-response-phase にはファイルパスが必要です\n";
+                std::cerr << "例: LLMapp.exe --once-system-prompt-response-phase promptTest/Template_response_minimal_v4.md\n";
+                return 1;
+            }
+
+            run_once_with_system_prompt = true;
+            one_shot_response_phase_only = true;
+            one_shot_system_prompt_file = argv[2];
+
+            if (argc > 3) {
+                one_shot_user_input = argv[3];
+            }
+        }
         // ヘルプ
         else if (arg == "--help" || arg == "-h") {
             std::cout << "感情駆動型AIエージェント\n\n";
@@ -621,11 +755,158 @@ int main(int argc, char** argv) {
             std::cout << "  LLMapp.exe --test-all       - 統合テスト (Analyzer + Memory)\n";
             std::cout << "  LLMapp.exe --test-memory    - Memory/Persistence テスト\n";
             std::cout << "  LLMapp.exe --test-keyword   - InputAnalyzer テスト (キーワードのみ)\n";
+            std::cout << "  LLMapp.exe --once-system-prompt <file> [user_input] - 指定プロンプトで1回推論して終了\n";
+            std::cout << "  LLMapp.exe --once-system-prompt-tool-phase <file> [user_input] - Tool Phaseのみ1回実行して終了\n";
+            std::cout << "  LLMapp.exe --once-system-prompt-response-phase <file> [user_input] - Response Phaseのみ1回実行して終了\n";
             std::cout << "  LLMapp.exe --help           - このヘルプを表示\n";
             std::cout << "\n対話中コマンド:\n";
-            std::cout << "  debug / emotion / history / reset / prompt\n";
+            std::cout << "  debug / emotion / history / reset / prompt [tool|response]\n";
             return 0;
         }
+    }
+
+    if (run_once_with_system_prompt) {
+        initialize_console();
+
+        const std::string one_shot_log_file = build_one_shot_log_file_path(one_shot_system_prompt_file);
+        {
+            std::ofstream reset_log(one_shot_log_file, std::ios::binary | std::ios::trunc);
+            if (reset_log.is_open()) {
+                reset_log << "[" << current_local_time_text() << "] One-shot log initialized\n";
+            }
+        }
+
+        auto log_one_shot = [&](const std::string& text) {
+            append_one_shot_log_line(one_shot_log_file, text);
+        };
+
+        log_one_shot("start: system_prompt_file=" + one_shot_system_prompt_file);
+        log_one_shot("start: user_input_length=" + std::to_string(one_shot_user_input.size()));
+        std::cout << "[One-shot] 実行ログ: " << one_shot_log_file << "\n";
+
+        std::string custom_system_prompt;
+        std::string file_error;
+        if (!read_text_file(one_shot_system_prompt_file, custom_system_prompt, file_error)) {
+            log_one_shot("error: " + file_error);
+            std::cerr << "エラー: " << file_error << "\n";
+            return 1;
+        }
+
+        log_one_shot("loaded_system_prompt_bytes=" + std::to_string(custom_system_prompt.size()));
+
+        if (trim_copy(custom_system_prompt).empty()) {
+            log_one_shot("error: system prompt file is empty");
+            std::cerr << "エラー: システムプロンプトファイルが空です: "
+                      << one_shot_system_prompt_file << "\n";
+            return 1;
+        }
+
+        PersonalityConstitution constitution;
+        constitution.core_values = "誠実で、親切で、ユーザーの成長を支援すること";
+        constitution.communication_style = "フレンドリーで共感的、時には冗談も交える";
+        constitution.sensitivity_to_praise = 0.8;
+        constitution.sensitivity_to_criticism = 0.4;
+        constitution.decay_rate = 0.05;
+        constitution.baseline_valence = 0.2;
+
+        const std::string model_path_for_run = resolve_model_path_for_run();
+
+        EmotionalAgent agent(
+            model_path_for_run,
+            constitution
+        );
+
+        log_one_shot("model_path=" + model_path_for_run);
+        std::cout << "[One-shot] 使用モデル: " << model_path_for_run << "\n";
+
+        register_default_tools(agent);
+        agent.set_system_prompt(custom_system_prompt);
+
+        std::cout << "[One-shot] システムプロンプトを読み込みました: "
+                  << one_shot_system_prompt_file << "\n";
+        if (one_shot_tool_phase_only) {
+            std::cout << "[One-shot] Tool Phase専用モードで推論を実行します...\n\n";
+        } else if (one_shot_response_phase_only) {
+            std::cout << "[One-shot] Response Phase専用モードで推論を実行します...\n\n";
+        } else {
+            std::cout << "[One-shot] 推論を実行します...\n\n";
+        }
+        log_one_shot("agent_initialize_begin");
+
+        if (!agent.initialize()) {
+            log_one_shot("error: agent initialize failed");
+            std::cerr << "エージェントの初期化に失敗しました。\n";
+            return 1;
+        }
+
+        log_one_shot("agent_initialize_success");
+
+        if (debug_mode) {
+            agent.set_debug_mode(true);
+            log_one_shot("debug_mode=enabled");
+        }
+
+    #if defined(_WIN32)
+        _putenv_s("LLMAPP_ONE_SHOT_RUNTIME_LOG", one_shot_log_file.c_str());
+    #else
+        setenv("LLMAPP_ONE_SHOT_RUNTIME_LOG", one_shot_log_file.c_str(), 1);
+    #endif
+        log_one_shot("raw_output_logging=enabled");
+
+        if (one_shot_tool_phase_only) {
+    #if defined(_WIN32)
+            _putenv_s("LLMAPP_TOOL_PHASE_ONLY", "1");
+    #else
+            setenv("LLMAPP_TOOL_PHASE_ONLY", "1", 1);
+    #endif
+            log_one_shot("tool_phase_only_mode=enabled");
+        }
+
+        if (one_shot_response_phase_only) {
+    #if defined(_WIN32)
+            _putenv_s("LLMAPP_RESPONSE_PHASE_ONLY", "1");
+    #else
+            setenv("LLMAPP_RESPONSE_PHASE_ONLY", "1", 1);
+    #endif
+            log_one_shot("response_phase_only_mode=enabled");
+        }
+
+        const auto infer_start = std::chrono::steady_clock::now();
+        std::string response = agent.process(one_shot_user_input);
+        const auto infer_end = std::chrono::steady_clock::now();
+
+    #if defined(_WIN32)
+        _putenv_s("LLMAPP_ONE_SHOT_RUNTIME_LOG", "");
+    #else
+        unsetenv("LLMAPP_ONE_SHOT_RUNTIME_LOG");
+    #endif
+
+        if (one_shot_tool_phase_only) {
+    #if defined(_WIN32)
+            _putenv_s("LLMAPP_TOOL_PHASE_ONLY", "");
+    #else
+            unsetenv("LLMAPP_TOOL_PHASE_ONLY");
+    #endif
+        }
+
+        if (one_shot_response_phase_only) {
+    #if defined(_WIN32)
+            _putenv_s("LLMAPP_RESPONSE_PHASE_ONLY", "");
+    #else
+            unsetenv("LLMAPP_RESPONSE_PHASE_ONLY");
+    #endif
+        }
+
+        const auto infer_ms = std::chrono::duration_cast<std::chrono::milliseconds>(infer_end - infer_start).count();
+
+        log_one_shot("inference_done_ms=" + std::to_string(infer_ms));
+        log_one_shot("response_length=" + std::to_string(response.size()));
+        log_one_shot("response_text_begin");
+        append_one_shot_log_line(one_shot_log_file, response);
+        log_one_shot("response_text_end");
+
+        std::cout << "AI: " << response << "\n";
+        return 0;
     }
     
     // ===== 通常の対話モード =====
@@ -717,6 +998,7 @@ int main(int argc, char** argv) {
         }
 
         const std::string normalized_input = trim_copy(user_input);
+        const std::string lowered_input = to_lower_copy(normalized_input);
         const std::string command_input = normalize_command_token(user_input);
 
         // 空入力のスキップ
@@ -756,10 +1038,30 @@ int main(int argc, char** argv) {
         }
 
         // プロンプト確認コマンド（状態更新なし）
-        if (command_input == "prompt") {
-            std::cout << "システムプロンプト（状態更新なし）:\n";
+        // 使い方:
+        //   prompt            -> Response Phase
+        //   prompt response   -> Response Phase
+        //   prompt tool       -> Tool Phase
+        if (lowered_input == "prompt" || lowered_input.rfind("prompt ", 0) == 0) {
+            PromptOrchestrator::PromptPhase preview_phase = PromptOrchestrator::PromptPhase::Response;
+
+            if (lowered_input == "prompt tool") {
+                preview_phase = PromptOrchestrator::PromptPhase::Tool;
+            } else if (lowered_input == "prompt" || lowered_input == "prompt response") {
+                preview_phase = PromptOrchestrator::PromptPhase::Response;
+            } else {
+                std::cout << "使い方: prompt [tool|response]\n\n";
+                continue;
+            }
+
+            const char* phase_name =
+                (preview_phase == PromptOrchestrator::PromptPhase::Tool)
+                ? "Tool Phase"
+                : "Response Phase";
+
+            std::cout << "システムプロンプト（状態更新なし / " << phase_name << "）:\n";
             std::cout << "------------------------------------------------------------\n";
-            std::cout << agent.build_prompt_preview() << "\n";
+            std::cout << agent.build_prompt_preview("", preview_phase) << "\n";
             std::cout << "------------------------------------------------------------\n\n";
             continue;
         }

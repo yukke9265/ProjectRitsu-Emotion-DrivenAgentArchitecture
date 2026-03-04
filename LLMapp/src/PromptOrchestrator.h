@@ -19,6 +19,11 @@ public:
         std::string content;
     };
 
+    enum class PromptPhase {
+        Tool,
+        Response
+    };
+
     PromptOrchestrator();
     ~PromptOrchestrator();
 
@@ -32,7 +37,8 @@ public:
     std::string build_final_prompt(
         const std::string& user_input,
         const EmotionEngine& emotion_engine,
-        const MemoryController& memory_controller);
+        const MemoryController& memory_controller,
+        PromptPhase phase = PromptPhase::Response);
 
     /**
      * @brief システムプロンプト（人格憲法）を設定

@@ -546,6 +546,44 @@ bool extract_tag_block_relaxed(
     return true;
 }
 
+// Helper: Strip Markdown code blocks (```) from text before strict parsing
+static std::string strip_markdown_code_blocks(const std::string& text) {
+    std::string result = text;
+
+    // Remove leading ```
+    size_t start = 0;
+    while (start < result.size() && std::isspace(static_cast<unsigned char>(result[start]))) {
+        ++start;
+    }
+    if (result.compare(start, 3, "```") == 0) {
+        start += 3;
+        // Skip optional language identifier (e.g., ```xml or ```json)
+        while (start < result.size() && result[start] != '\n') {
+            ++start;
+        }
+        if (start < result.size() && result[start] == '\n') {
+            ++start;
+        }
+        result = result.substr(start);
+    }
+
+    // Remove trailing ```
+    size_t end = result.size();
+    while (end > 0 && std::isspace(static_cast<unsigned char>(result[end - 1]))) {
+        --end;
+    }
+    if (end >= 3 && result.compare(end - 3, 3, "```") == 0) {
+        end -= 3;
+        // Strip trailing whitespace before code block marker
+        while (end > 0 && std::isspace(static_cast<unsigned char>(result[end - 1]))) {
+            --end;
+        }
+        result = result.substr(0, end);
+    }
+
+    return result;
+}
+
 }
 
 void ToolRegistryExecutor::register_tool(const ToolSpec& spec, ToolHandler handler) {
@@ -678,10 +716,10 @@ std::string ToolIOProtocol::build_output_contract_guide(bool allow_tool_call) {
 
     oss << "出力契約（現行2フェーズ運用）:\n";
     if (allow_tool_call) {
-        oss << "- Tool Phase: <tool_call> ブロックのみを出力。不要時は name: __no_tool__ / input: {}。\n";
+        oss << "- Tool Phase: <tool_call> ブロックのみを出力。\n";
         oss << "  形式:\n";
         oss << "  <tool_call>\n";
-        oss << "  name: <tool_name_or___no_tool__>\n";
+        oss << "  name: <tool_name>\n";
         oss << "  input:\n";
         oss << "  <tool_input_text_or_json>\n";
         oss << "  </tool_call>\n";
@@ -701,14 +739,33 @@ std::string ToolIOProtocol::build_output_contract_guide(bool allow_tool_call) {
 
 std::string ToolIOProtocol::build_tool_call_contract_guide() {
     std::ostringstream oss;
-    oss << "出力契約（Tool Phase / 厳守）:\n";
-    oss << "- 出力は tool_call ブロック1つのみ。\n";
-    oss << "- それ以外の前置き・見出し・説明文は禁止。\n\n";
+    oss << "【Tool Phase 出力契約 / 厳守】\n\n";
+    oss << "必須: <tool_call> ブロック1つのみ。前置き・説明・コメント不要。\n\n";
+    oss << "形式:\n";
     oss << "<tool_call>\n";
-    oss << "name: <tool_name_or___no_tool__>\n";
-    oss << "input:\n";
-    oss << "<tool_input_text_or_json>\n";
-    oss << "</tool_call>\n";
+    oss << "name: <ツール名>\n";
+    oss << "input: <JSON形式の入力>\n";
+    oss << "</tool_call>\n\n";
+    oss << "例1（JSON入力）:\n";
+    oss << "<tool_call>\n";
+    oss << "name: number_guess_game\n";
+    oss << "input: { \"action\": \"start\", \"min\": 1, \"max\": 100 }\n";
+    oss << "</tool_call>\n\n";
+    oss << "例2（シンプル入力）:\n";
+    oss << "<tool_call>\n";
+    oss << "name: get_current_time\n";
+    oss << "input: {}\n";
+    oss << "</tool_call>\n\n";
+    oss << "例3（ツール終了）:\n";
+    oss << "<tool_call>\n";
+    oss << "name: finish_tool_planning\n";
+    oss << "input: {}\n";
+    oss << "</tool_call>\n\n";
+    oss << "禁止事項:\n";
+    oss << "- Markdownコードブロック（```）で囲まない\n";
+    oss << "- 「それでは」「まず」などの前置き不要\n";
+    oss << "- tool_callブロックの外に説明文を書かない\n";
+    oss << "- 複数のtool_callブロックを同時出力しない\n";
     return oss.str();
 }
 
@@ -855,8 +912,9 @@ bool ToolIOProtocol::try_parse_assistant_response_strict(const std::string& llm_
     const std::string open_tag = "<assistant_response>";
     const std::string close_tag = "</assistant_response>";
 
+    // Relaxed extraction: ignore text before/after tags
     std::string block;
-    if (!extract_tag_block_strict(llm_output, open_tag, close_tag, block)) {
+    if (!extract_tag_block_relaxed(llm_output, open_tag, close_tag, block)) {
         return false;
     }
 
@@ -868,8 +926,9 @@ bool ToolIOProtocol::try_parse_tool_call_strict(const std::string& llm_output, T
     const std::string open_tag = "<tool_call>";
     const std::string close_tag = "</tool_call>";
 
+    // Relaxed extraction: ignore text before/after tags (e.g., ```, <end_of_turn>)
     std::string block;
-    if (!extract_tag_block_strict(llm_output, open_tag, close_tag, block)) {
+    if (!extract_tag_block_relaxed(llm_output, open_tag, close_tag, block)) {
         return false;
     }
 

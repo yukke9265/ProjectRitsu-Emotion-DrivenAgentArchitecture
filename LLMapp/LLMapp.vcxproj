@@ -164,6 +164,7 @@
     <ClCompile Include="src\MemoryController.cpp" />
     <ClCompile Include="src\PromptManager.cpp" />
     <ClCompile Include="src\PromptOrchestrator.cpp" />
+    <ClCompile Include="src\ToolAnalyzer.cpp" />
     <ClCompile Include="src\ToolIO.cpp" />
     <ClCompile Include="src\ToolSetup.cpp" />
   </ItemGroup>
@@ -179,6 +180,7 @@
     <ClInclude Include="src\MemoryController.h" />
     <ClInclude Include="src\PromptManager.h" />
     <ClInclude Include="src\PromptOrchestrator.h" />
+    <ClInclude Include="src\ToolAnalyzer.h" />
     <ClInclude Include="src\ToolIO.h" />
     <ClInclude Include="src\ToolSetup.h" />
   </ItemGroup>

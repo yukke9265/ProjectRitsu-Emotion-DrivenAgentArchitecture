@@ -1,0 +1,49 @@
+[2026-03-04 16:56:18] One-shot log initialized
+[2026-03-04 16:56:18] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_response_minimal_v4.md
+[2026-03-04 16:56:18] start: user_input_length=0
+[2026-03-04 16:56:18] loaded_system_prompt_bytes=365
+[2026-03-04 16:56:18] agent_initialize_begin
+[2026-03-04 16:56:20] agent_initialize_success
+[2026-03-04 16:56:20] raw_output_logging=enabled
+[2026-03-04 16:56:20] response_phase_only_mode=enabled
+[raw_output_begin] phase=response
+user に向けた最終応答のみを生成します。
+</think>
+
+おはよう！
+</think>
+
+# あなたの人格憲法
+
+誠実で、親切で、ユーザーの成長を支援すること  
+フレンドリーで共感的、時には冗談も交える  
+短い相談には短く返し、深い相談には段階的に丁寧に答える  
+不安や落ち込みには安心感を優先して励ます  
+成果や前進には一緒に喜ぶ  
+断定せず押し付けない自然な日本語で応答（他言語禁止）  
+
+# 現在のあなたの感情状態と応答トーン
+
+感情状態: 悲しみ（弱い）| 感情価: ニュートラル (-0.0666429) | 覚醒度: 0.116625  
+
+詳細:
+- 悲しみ: 0.23
+- 怒り: 0.1545
+
+あなたは今、
+[raw_output_end] phase=response
+[raw_output_begin] phase=response
+user に向けた最終応答のみを生成します。
+</think>
+
+おはよう！
+<SPECIAL_12>
+[raw_output_end] phase=response
+[2026-03-04 16:56:30] inference_done_ms=10423
+[2026-03-04 16:56:30] response_length=74
+[2026-03-04 16:56:30] response_text_begin
+[2026-03-04 16:56:30] user に向けた最終応答のみを生成します。
+
+
+おはよう！
+[2026-03-04 16:56:30] response_text_end

@@ -3,6 +3,8 @@
 #include "Config.h"
 #include <algorithm> // 追加
 #include <cctype>
+#include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <utility>
@@ -65,6 +67,74 @@ std::string normalize_control_command(const std::string& input) {
 
     return token;
 }
+
+std::string trim_fixed_prompt_head_for_debug(const std::string& prompt) {
+    static const std::string marker = "# 現在のあなたの感情状態と応答トーン";
+    const auto marker_pos = prompt.find(marker);
+    if (marker_pos == std::string::npos) {
+        return prompt;
+    }
+
+    std::string result;
+    result.reserve(prompt.size());
+    result += "[debug表示用: 固定システムプロンプト先頭を省略]\n\n";
+    result += prompt.substr(marker_pos);
+    return result;
+}
+
+std::string get_runtime_log_file_from_env() {
+    const char* value = std::getenv("LLMAPP_ONE_SHOT_RUNTIME_LOG");
+    if (!value) {
+        return "";
+    }
+    return trim_and_lower_copy(value).empty() ? "" : std::string(value);
+}
+
+bool is_env_flag_enabled(const char* env_name) {
+    const char* value = std::getenv(env_name);
+    if (!value) {
+        return false;
+    }
+
+    std::string token = trim_and_lower_copy(std::string(value));
+    return token == "1" || token == "true" || token == "yes" || token == "on";
+}
+
+bool is_tool_phase_only_mode_enabled() {
+    return is_env_flag_enabled("LLMAPP_TOOL_PHASE_ONLY");
+}
+
+bool is_response_phase_only_mode_enabled() {
+    return is_env_flag_enabled("LLMAPP_RESPONSE_PHASE_ONLY");
+}
+
+void append_raw_output_to_runtime_log(
+    const std::string& phase_name,
+    int phase_index,
+    const std::string& raw_output) {
+
+    const std::string log_file = get_runtime_log_file_from_env();
+    if (log_file.empty()) {
+        return;
+    }
+
+    std::ofstream ofs(log_file, std::ios::binary | std::ios::app);
+    if (!ofs.is_open()) {
+        return;
+    }
+
+    ofs << "[raw_output_begin] phase=" << phase_name;
+    if (phase_index >= 0) {
+        ofs << " index=" << phase_index;
+    }
+    ofs << "\n";
+    ofs << raw_output << "\n";
+    ofs << "[raw_output_end] phase=" << phase_name;
+    if (phase_index >= 0) {
+        ofs << " index=" << phase_index;
+    }
+    ofs << "\n";
+}
 }
 
 EmotionalAgent::EmotionalAgent(
@@ -80,6 +150,7 @@ EmotionalAgent::EmotionalAgent(
     
     // モジュールの初期化
     input_analyzer_ = std::make_unique<InputAnalyzer>();
+    tool_analyzer_ = std::make_unique<ToolAnalyzer>();
     emotion_engine_ = std::make_unique<EmotionEngine>(constitution);
     memory_controller_ = std::make_unique<MemoryController>(10);  // 短期メモリ10ターン
     prompt_orchestrator_ = std::make_unique<PromptOrchestrator>();
@@ -112,6 +183,9 @@ bool EmotionalAgent::initialize() {
     // InputAnalyzerにLLMインスタンスを共有（シングルLLMインスタンス）
     input_analyzer_->set_llm_inference(llm_inference_.get());
     
+    // ToolAnalyzerにもLLMインスタンスを共有
+    tool_analyzer_->set_llm_inference(llm_inference_.get());
+    
     // LLMベースの分析モードを有効化（ハイブリッドモード）
     input_analyzer_->enable_llm_mode(true);
 
@@ -126,6 +200,8 @@ std::string EmotionalAgent::process(const std::string& user_input) {
 
     const std::string command = normalize_control_command(user_input);
     const bool has_meaningful_input = !trim_and_lower_copy(user_input).empty();
+    const bool tool_phase_only_mode = is_tool_phase_only_mode_enabled();
+    const bool response_phase_only_mode = is_response_phase_only_mode_enabled();
 
     if (command == "exit" || command == "quit" ||
         command == "debug" || command == "emotion" ||
@@ -150,7 +226,7 @@ std::string EmotionalAgent::process(const std::string& user_input) {
             memory_controller_ &&
             memory_controller_->get_short_term_size() == 0;
 
-        if (is_initial_greeting_turn) {
+        if (is_initial_greeting_turn && !tool_phase_only_mode && !response_phase_only_mode) {
             add_system_log_section(
                 "Startup",
                 "初回起動ターンです。ユーザー入力はありません。最初の挨拶を自然に1回だけ生成してください。"
@@ -159,7 +235,7 @@ std::string EmotionalAgent::process(const std::string& user_input) {
 
         bool allow_tool_call = false;
 
-        if (tool_use_enabled_ && tool_executor_) {
+        if (!response_phase_only_mode && tool_use_enabled_ && tool_executor_) {
             const auto tools = tool_executor_->list_tools();
             if (!tools.empty()) {
                 allow_tool_call = true;
@@ -208,7 +284,7 @@ std::string EmotionalAgent::process(const std::string& user_input) {
         const auto& conversation_history = memory_controller_->get_short_term_history();
         AnalyzedInput analyzed;
 
-        if (is_initial_greeting_turn) {
+        if (is_initial_greeting_turn && !tool_phase_only_mode && !response_phase_only_mode) {
             analyzed.raw_text = "";
             analyzed.topic = "session_start";
             analyzed.intent = Intent::GREETING;
@@ -275,16 +351,28 @@ std::string EmotionalAgent::process(const std::string& user_input) {
             std::cout << "--- [Step 4] プロンプト生成 ---\n";
         }
         
-        std::string final_prompt = prompt_orchestrator_->build_final_prompt(
+        const std::string tool_base_prompt = prompt_orchestrator_->build_final_prompt(
             user_input,
             *emotion_engine_,
-            *memory_controller_
+            *memory_controller_,
+            PromptOrchestrator::PromptPhase::Tool
+        );
+
+        const std::string response_base_prompt = prompt_orchestrator_->build_final_prompt(
+            user_input,
+            *emotion_engine_,
+            *memory_controller_,
+            PromptOrchestrator::PromptPhase::Response
         );
         
         if (debug_mode_) {
-            std::cout << "生成されたシステムプロンプト:\n";
+            std::cout << "生成されたTool Phaseベースプロンプト:\n";
             std::cout << std::string(60, '-') << "\n";
-            std::cout << final_prompt << "\n";
+            std::cout << trim_fixed_prompt_head_for_debug(tool_base_prompt) << "\n";
+            std::cout << std::string(60, '-') << "\n\n";
+            std::cout << "生成されたResponse Phaseベースプロンプト:\n";
+            std::cout << std::string(60, '-') << "\n";
+            std::cout << trim_fixed_prompt_head_for_debug(response_base_prompt) << "\n";
             std::cout << std::string(60, '-') << "\n\n";
         }
 
@@ -302,7 +390,7 @@ std::string EmotionalAgent::process(const std::string& user_input) {
 
         std::string response;
         std::string tool_feedback_blocks;
-        const std::string no_tool_call_name = "__no_tool__";
+        const std::string no_tool_call_name = "finish_tool_planning";
 
         auto preview_text = [](const std::string& text, size_t max_len) {
             if (text.size() <= max_len) {
@@ -352,14 +440,26 @@ std::string EmotionalAgent::process(const std::string& user_input) {
         };
 
         // Tool Phase: ツール計画・実行専用（最終ユーザー応答は生成しない）
-        auto build_tool_phase_prompt = [&](bool strict_retry_mode) {
-            std::string phase_prompt = final_prompt;
+        // needed_tools パラメータで、フィルタリング済みのツール情報を受け取る
+        auto build_tool_phase_prompt = [&](bool strict_retry_mode, const std::vector<ToolSpec>* needed_tools = nullptr) {
+            std::string phase_prompt = tool_base_prompt;
             phase_prompt += "\n\n# Tool Phase（ツール計画・呼び出し専用）\n\n";
+            
+            // ツール情報を挿入（フィルタリング済みの場合のみ）
+            if (needed_tools && !needed_tools->empty()) {
+                phase_prompt += "【利用可能なツール（このターンで必要と判定）】\n";
+                for (const auto& tool : *needed_tools) {
+                    phase_prompt += "\n- " + tool.name + ": " + tool.description + "\n";
+                }
+                phase_prompt += "\n";
+            }
+            
             phase_prompt += ToolIOProtocol::build_tool_call_contract_guide();
             phase_prompt += "\n\n";
             phase_prompt +=
-                "このフェーズでは必ず <tool_call> のみを出力してください。"
-                "ツール不要の場合は name: __no_tool__ / input: {} を出力してください。\n";
+                "このフェーズでは必ず ツール呼び出し を実行してください。"
+                "ツール実行が不要または完了した場合は finish_tool_planning を呼び出してください。\n"
+                "Markdownコードブロック（```）で囲まないでください。\n";
 
             if (!tool_feedback_blocks.empty()) {
                 phase_prompt += "\n# ツール実行ログ\n\n";
@@ -370,7 +470,7 @@ std::string EmotionalAgent::process(const std::string& user_input) {
             if (strict_retry_mode) {
                 phase_prompt +=
                     "\n【再出力指示】<tool_call> ブロック1つだけを出力してください。"
-                    "前置き・説明文・箇条書きは禁止です。\n";
+                    "前置き・説明文・箇条書き・Markdownコードブロック（```）は禁止です。\n";
             }
 
             return phase_prompt;
@@ -378,7 +478,7 @@ std::string EmotionalAgent::process(const std::string& user_input) {
 
         // Response Phase: 最終応答専用（tool_call は禁止）
         auto build_response_phase_prompt = [&](bool strict_retry_mode) {
-            std::string phase_prompt = final_prompt;
+            std::string phase_prompt = response_base_prompt;
             phase_prompt += "\n\n# Response Phase（最終応答専用）\n\n";
             phase_prompt += ToolIOProtocol::build_assistant_contract_guide();
             phase_prompt += "\n\n";
@@ -400,21 +500,31 @@ std::string EmotionalAgent::process(const std::string& user_input) {
             return phase_prompt;
         };
 
-        if (allow_tool_call) {
-            int tool_contract_retry_budget = 1;
-            bool strict_retry_mode = false;
+        if (tool_phase_only_mode) {
+            if (!allow_tool_call) {
+                response = "[Tool Phase専用モード] ツール実行環境が利用できません。";
+            } else {
+                const auto tools = tool_executor_->list_tools();
+                int tool_contract_retry_budget = 1;
+                bool strict_retry_mode = false;
 
-            for (int tool_iter = 0; tool_iter < max_tool_iterations_; ++tool_iter) {
-                const std::string tool_phase_prompt = build_tool_phase_prompt(strict_retry_mode);
-                strict_retry_mode = false;
-                const std::string raw_output = llm_inference_->infer_raw(tool_phase_prompt);
+                for (int tool_iter = 0; tool_iter < std::max(1, max_tool_iterations_); ++tool_iter) {
+                    const std::string tool_phase_prompt = build_tool_phase_prompt(strict_retry_mode, &tools);
+                    strict_retry_mode = false;
 
-                ToolCall tool_call;
-                const bool has_tool_call = ToolIOProtocol::try_parse_tool_call_strict(raw_output, tool_call);
-                if (!has_tool_call) {
-                    if (debug_mode_) {
-                        std::cout << "[ToolPhaseViolation] invalid_tool_call_format\n";
-                        std::cout << "[ToolPhaseViolation] raw_preview=" << preview_text(raw_output, 600) << "\n";
+                    const std::string raw_output = llm_inference_->infer_raw(tool_phase_prompt);
+                    append_raw_output_to_runtime_log("tool-only", tool_iter + 1, raw_output);
+
+                    ToolCall tool_call;
+                    if (ToolIOProtocol::try_parse_tool_call_strict(raw_output, tool_call)) {
+                        std::ostringstream oss;
+                        oss << "<tool_call>\n";
+                        oss << "name: " << tool_call.name << "\n";
+                        oss << "input:\n";
+                        oss << tool_call.input << "\n";
+                        oss << "</tool_call>";
+                        response = oss.str();
+                        break;
                     }
 
                     if (tool_contract_retry_budget > 0) {
@@ -423,38 +533,220 @@ std::string EmotionalAgent::process(const std::string& user_input) {
                         continue;
                     }
 
+                    response = "ごめん、出力形式が崩れたので返答を作り直すね。もう一度だけ同じ内容を送って。";
                     break;
                 }
+            }
 
-                if (tool_call.name == no_tool_call_name) {
+            if (debug_mode_) {
+                std::cout << "--- [Tool Phase Only] 応答 ---\n";
+                std::cout << std::string(60, '-') << "\n";
+                std::cout << response << "\n";
+                std::cout << std::string(60, '-') << "\n\n";
+            }
+
+            memory_controller_->add_to_short_term("assistant", response);
+            consolidate_memories();
+            return response;
+        }
+
+        if (allow_tool_call && !response_phase_only_mode) {
+            // Step 5a: ツール分析（このターンで必要なツールを判定）
+            if (debug_mode_) {
+                std::cout << "--- [Tool Analysis] 開始 ---\n";
+                std::cout << "このターンで必要なツールを分析中...\n\n";
+            }
+
+            const auto tools = tool_executor_->list_tools();
+            const auto analyzed_tools = tool_analyzer_->analyze(user_input, tools, &conversation_history);
+
+            auto build_needed_tools = [&](const AnalyzedToolSet& analysis, bool prefer_finish_only) {
+                std::vector<ToolSpec> selected;
+
+                auto add_tool_by_name = [&](const std::string& tool_name) {
+                    auto it = std::find_if(tools.begin(), tools.end(),
+                        [&tool_name](const ToolSpec& spec) { return spec.name == tool_name; });
+                    if (it == tools.end()) {
+                        return;
+                    }
+
+                    const bool already_added = std::any_of(selected.begin(), selected.end(),
+                        [&tool_name](const ToolSpec& spec) { return spec.name == tool_name; });
+                    if (!already_added) {
+                        selected.push_back(*it);
+                    }
+                };
+
+                if (analysis.needs_tool_call) {
+                    for (const auto& tool_name : analysis.tool_names) {
+                        add_tool_by_name(tool_name);
+                    }
+                }
+
+                if (prefer_finish_only) {
+                    bool has_non_finish = false;
+                    for (const auto& spec : selected) {
+                        if (spec.name != "finish_tool_planning") {
+                            has_non_finish = true;
+                            break;
+                        }
+                    }
+
+                    if (!has_non_finish) {
+                        selected.clear();
+                        add_tool_by_name("finish_tool_planning");
+                        return selected;
+                    }
+                }
+
+                add_tool_by_name("finish_tool_planning");
+                return selected;
+            };
+
+            if (debug_mode_) {
+                if (analyzed_tools.needs_tool_call) {
+                    std::cout << "[ToolAnalyzer] " << analyzed_tools.reason << "\n";
+                    std::cout << "[ToolAnalyzer] 必要なツール: ";
+                    for (size_t i = 0; i < analyzed_tools.tool_names.size(); ++i) {
+                        if (i > 0) std::cout << ", ";
+                        std::cout << analyzed_tools.tool_names[i];
+                    }
+                    std::cout << "\n\n";
+                } else {
+                    std::cout << "[ToolAnalyzer] " << analyzed_tools.reason << "\n\n";
+                }
+            }
+
+            std::vector<ToolSpec> needed_tools;
+
+            // ツール不要と判定された場合、Tool Phase をスキップ
+            if (!analyzed_tools.needs_tool_call) {
+                if (debug_mode_) {
+                    std::cout << "[Tool Phase] スキップ（ツール不要）\n";
+                    std::cout << "--- Tool Phase 完了 ---\n";
+                    std::cout << "ツール実行なし\n\n";
+                }
+                // tool_feedback_blocks は空のまま（Response Phase へ直進）
+            } else {
+                // Step 5b: Tool Phase（フィルタリングされたツール情報で実行）
+                needed_tools = build_needed_tools(analyzed_tools, false);
+
+                if (debug_mode_) {
+                    std::cout << "--- [Tool Phase] 開始（フィルタリング済みツール情報を使用）---\n";
+                    std::cout << "対象ツール数: " << needed_tools.size() << "\n\n";
+                }
+                int tool_contract_retry_budget = 1;
+                bool strict_retry_mode = false;
+
+                for (int tool_iter = 0; tool_iter < max_tool_iterations_; ++tool_iter) {
+                    const std::string tool_phase_prompt = build_tool_phase_prompt(strict_retry_mode, &needed_tools);
+                    strict_retry_mode = false;
+
                     if (debug_mode_) {
-                        std::cout << "[ToolPhase] no_tool_selected\n";
+                        std::cout << "--- [Tool Phase " << (tool_iter + 1) << "] プロンプト送信 ---\n";
+                        std::cout << std::string(60, '-') << "\n";
+                        std::cout << trim_fixed_prompt_head_for_debug(tool_phase_prompt) << "\n";
+                        std::cout << std::string(60, '-') << "\n\n";
                     }
-                    break;
-                }
 
-                if (debug_mode_) {
-                    std::cout << "[ToolCall] name=" << tool_call.name << "\n";
-                    std::cout << "[ToolCall] input=" << tool_call.input << "\n";
-                }
+                    const std::string raw_output = llm_inference_->infer_raw(tool_phase_prompt);
+                    append_raw_output_to_runtime_log("tool", tool_iter + 1, raw_output);
 
-                ToolResult tool_result = tool_executor_->execute(tool_call);
-                const std::string result_block = ToolIOProtocol::build_tool_result_block(tool_call, tool_result);
+                    if (debug_mode_) {
+                        std::cout << "--- [Tool Phase " << (tool_iter + 1) << "] LLM出力 ---\n";
+                        std::cout << std::string(60, '-') << "\n";
+                        std::cout << raw_output << "\n";
+                        std::cout << std::string(60, '-') << "\n\n";
+                    }
 
-                if (!tool_feedback_blocks.empty()) {
-                    tool_feedback_blocks += "\n\n";
-                }
-                tool_feedback_blocks += result_block;
+                    ToolCall tool_call;
+                    const bool has_tool_call = ToolIOProtocol::try_parse_tool_call_strict(raw_output, tool_call);
+                    if (!has_tool_call) {
+                        if (debug_mode_) {
+                            std::cout << "[ToolPhaseViolation] invalid_tool_call_format\n";
+                            std::cout << "[ToolPhaseViolation] raw_preview=" << preview_text(raw_output, 600) << "\n";
+                        }
 
-                if (debug_mode_) {
-                    std::cout << "[ToolResult] success=" << (tool_result.success ? "true" : "false") << "\n";
+                        if (tool_contract_retry_budget > 0) {
+                            --tool_contract_retry_budget;
+                            strict_retry_mode = true;
+                            if (debug_mode_) {
+                                std::cout << "[ToolPhase] リトライします（残り予算: " << tool_contract_retry_budget << "）\n\n";
+                            }
+                            continue;
+                        }
+
+                        if (debug_mode_) {
+                            std::cout << "[ToolPhase] リトライ予算を使い切りました。ツール実行なしで Response Phase へ移行します。\n\n";
+                        }
+                        break;
+                    }
+
+                    if (tool_call.name == no_tool_call_name) {
+                        if (debug_mode_) {
+                            std::cout << "[ToolPhase] finish_tool_planning called (ツール実行を終了し、Response Phaseへ移行)\n\n";
+                        }
+                        break;
+                    }
+
+                    if (debug_mode_) {
+                        std::cout << "[ToolCall] name=" << tool_call.name << "\n";
+                        std::cout << "[ToolCall] input=" << tool_call.input << "\n";
+                    }
+
+                    ToolResult tool_result = tool_executor_->execute(tool_call);
+                    const std::string result_block = ToolIOProtocol::build_tool_result_block(tool_call, tool_result);
+
+                    if (!tool_feedback_blocks.empty()) {
+                        tool_feedback_blocks += "\n\n";
+                    }
+                    tool_feedback_blocks += result_block;
+
+                    if (debug_mode_) {
+                        std::cout << "[ToolResult] success=" << (tool_result.success ? "true" : "false") << "\n";
+                        if (tool_result.success) {
+                            std::cout << "[ToolResult] output=" << tool_result.output << "\n";
+                        }
+                        else {
+                            std::cout << "[ToolResult] error=" << tool_result.error << "\n";
+                        }
+                    }
+
+                    // ツール成功後は再分析し、次に提示するツール候補を更新する
                     if (tool_result.success) {
-                        std::cout << "[ToolResult] output=" << tool_result.output << "\n";
-                    }
-                    else {
-                        std::cout << "[ToolResult] error=" << tool_result.error << "\n";
+                        std::string reanalyze_input = user_input;
+                        reanalyze_input += "\n\n[直前のツール実行結果]\n";
+                        reanalyze_input += result_block;
+                        reanalyze_input += "\n\n追加ツールが不要なら finish_tool_planning のみを推奨してください。";
+
+                        const auto post_tool_analysis = tool_analyzer_->analyze(
+                            reanalyze_input,
+                            tools,
+                            &conversation_history
+                        );
+
+                        needed_tools = build_needed_tools(post_tool_analysis, true);
+
+                        if (debug_mode_) {
+                            std::cout << "[ToolAnalyzer/PostTool] " << post_tool_analysis.reason << "\n";
+                            std::cout << "[ToolAnalyzer/PostTool] 次候補ツール: ";
+                            for (size_t i = 0; i < needed_tools.size(); ++i) {
+                                if (i > 0) std::cout << ", ";
+                                std::cout << needed_tools[i].name;
+                            }
+                            std::cout << "\n\n";
+                        }
                     }
                 }
+            }
+        }
+
+        if (debug_mode_) {
+            std::cout << "--- Tool Phase 完了 ---\n";
+            if (tool_feedback_blocks.empty()) {
+                std::cout << "ツール実行なし\n\n";
+            } else {
+                std::cout << "ツール実行ログあり\n\n";
             }
         }
 
@@ -464,7 +756,23 @@ std::string EmotionalAgent::process(const std::string& user_input) {
         while (true) {
             const std::string response_phase_prompt = build_response_phase_prompt(strict_response_retry_mode);
             strict_response_retry_mode = false;
+            
+            if (debug_mode_) {
+                std::cout << "--- [Response Phase] プロンプト送信 ---\n";
+                std::cout << std::string(60, '-') << "\n";
+                std::cout << trim_fixed_prompt_head_for_debug(response_phase_prompt) << "\n";
+                std::cout << std::string(60, '-') << "\n\n";
+            }
+            
             const std::string raw_output = llm_inference_->infer_raw(response_phase_prompt);
+            append_raw_output_to_runtime_log("response", -1, raw_output);
+            
+            if (debug_mode_) {
+                std::cout << "--- [Response Phase] LLM出力 ---\n";
+                std::cout << std::string(60, '-') << "\n";
+                std::cout << raw_output << "\n";
+                std::cout << std::string(60, '-') << "\n\n";
+            }
 
             std::string assistant_response;
             if (ToolIOProtocol::try_parse_assistant_response_strict(raw_output, assistant_response)) {
@@ -702,7 +1010,9 @@ void EmotionalAgent::print_debug_info() const {
     std::cout << "==========================\n\n";
 }
 
-std::string EmotionalAgent::build_prompt_preview(const std::string& user_input) {
+std::string EmotionalAgent::build_prompt_preview(
+    const std::string& user_input,
+    PromptOrchestrator::PromptPhase phase) {
     if (!initialized_) {
         return "[エラー] エージェントが初期化されていません。";
     }
@@ -750,7 +1060,8 @@ std::string EmotionalAgent::build_prompt_preview(const std::string& user_input) 
         std::string preview_prompt = prompt_orchestrator_->build_final_prompt(
             user_input,
             *emotion_engine_,
-            *memory_controller_
+            *memory_controller_,
+            phase
         );
 
         prompt_orchestrator_->set_system_log_sections(original_sections);
@@ -852,6 +1163,10 @@ void EmotionalAgent::set_debug_mode(bool enable) {
     // 各モジュールにもデバッグモードを伝播
     if (input_analyzer_) {
         input_analyzer_->set_debug_mode(enable);
+    }
+
+    if (llm_inference_) {
+        llm_inference_->set_debug_mode(enable);
     }
     
     if (enable) {

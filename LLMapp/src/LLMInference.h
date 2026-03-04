@@ -40,6 +40,9 @@ public:
     // KVキャッシュをクリア（メモリを解放して次の推論に備える）
     void clear_kv_cache();
 
+    // デバッグログ（VRAM残量表示）の有効/無効
+    void set_debug_mode(bool enable) { debug_mode_ = enable; }
+
     // 内部状態の確認
     bool is_initialized() const { return initialized_; }
 
@@ -51,6 +54,7 @@ private:
     common_params params_;
     int n_predict_;
     bool initialized_;
+    bool debug_mode_;
     std::string last_error_;
 
     // LLamaポインタ

@@ -1,0 +1,52 @@
+[2026-03-04 16:39:58] One-shot log initialized
+[2026-03-04 16:39:58] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_tool_minimal_v3.md
+[2026-03-04 16:39:58] start: user_input_length=0
+[2026-03-04 16:39:58] loaded_system_prompt_bytes=241
+[2026-03-04 16:39:58] agent_initialize_begin
+[2026-03-04 16:40:01] agent_initialize_success
+[2026-03-04 16:40:01] raw_output_logging=enabled
+[raw_output_begin] phase=response
+ユーザーに直接話しかける自然なセリフを生成してください。
+感情状態の数値や分析説明は出さず、自然な日本語の応答本文だけを返してください。
+
+
+# 現在のコンテキスト（最新5ターンまで）
+
+直近の会話履歴:
+```
+## Startup
+初回起動ターンです。ユーザー入力はありません。最初の挨拶を自然に1回だけ生成してください。
+```
+
+```text
+
+```
+
+</think>
+
+こんにちは！今日はどんなことでお困りでしょうか？いつでも気軽におしゃべりしましょう✨
+<SPECIAL_12>
+[raw_output_end] phase=response
+[2026-03-04 16:40:05] inference_done_ms=4556
+[2026-03-04 16:40:05] response_length=583
+[2026-03-04 16:40:05] response_text_begin
+[2026-03-04 16:40:05] ユーザーに直接話しかける自然なセリフを生成してください。
+感情状態の数値や分析説明は出さず、自然な日本語の応答本文だけを返してください。
+
+
+# 現在のコンテキスト（最新5ターンまで）
+
+直近の会話履歴:
+```
+## Startup
+初回起動ターンです。ユーザー入力はありません。最初の挨拶を自然に1回だけ生成してください。
+```
+
+```text
+
+```
+
+
+
+こんにちは！今日はどんなことでお困りでしょうか？いつでも気軽におしゃべりしましょう✨
+[2026-03-04 16:40:05] response_text_end

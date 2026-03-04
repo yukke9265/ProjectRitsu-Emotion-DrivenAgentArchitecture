@@ -1,0 +1,18 @@
+[2026-03-04 16:20:03] One-shot log initialized
+[2026-03-04 16:20:03] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_response_minimal.md
+[2026-03-04 16:20:03] start: user_input_length=0
+[2026-03-04 16:20:03] loaded_system_prompt_bytes=1070
+[2026-03-04 16:20:03] agent_initialize_begin
+[2026-03-04 16:20:05] agent_initialize_success
+[2026-03-04 16:20:05] raw_output_logging=enabled
+[raw_output_begin] phase=response
+全ての必要な処理が完了していれば finish_tool_planning を呼び出すか、直接応答を生成してください。
+```
+<SPECIAL_12>
+[raw_output_end] phase=response
+[2026-03-04 16:20:13] inference_done_ms=7447
+[2026-03-04 16:20:13] response_length=137
+[2026-03-04 16:20:13] response_text_begin
+[2026-03-04 16:20:13] 全ての必要な処理が完了していれば finish_tool_planning を呼び出すか、直接応答を生成してください。
+```
+[2026-03-04 16:20:13] response_text_end

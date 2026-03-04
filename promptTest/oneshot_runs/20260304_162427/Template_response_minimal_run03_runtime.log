@@ -1,0 +1,21 @@
+[2026-03-04 16:24:36] One-shot log initialized
+[2026-03-04 16:24:36] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_response_minimal.md
+[2026-03-04 16:24:36] start: user_input_length=0
+[2026-03-04 16:24:36] loaded_system_prompt_bytes=1070
+[2026-03-04 16:24:36] agent_initialize_begin
+[2026-03-04 16:24:38] agent_initialize_success
+[2026-03-04 16:24:38] raw_output_logging=enabled
+[raw_output_begin] phase=response
+代わりに finish_tool_planning を出力してこのターンを終了し、ユーザーへの応答生成フェーズに移行してください。
+</think>
+
+<assistant_response>
+おはようございます！今日も良い一日になりますように✨
+</assistant_response>
+<SPECIAL_12>
+[raw_output_end] phase=response
+[2026-03-04 16:24:41] inference_done_ms=3045
+[2026-03-04 16:24:41] response_length=78
+[2026-03-04 16:24:41] response_text_begin
+[2026-03-04 16:24:41] おはようございます！今日も良い一日になりますように✨
+[2026-03-04 16:24:41] response_text_end

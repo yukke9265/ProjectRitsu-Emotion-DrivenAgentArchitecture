@@ -70,7 +70,8 @@ PromptOrchestrator::~PromptOrchestrator() {
 std::string PromptOrchestrator::build_final_prompt(
     const std::string& user_input,
     const EmotionEngine& emotion_engine,
-    const MemoryController& memory_controller) {
+    const MemoryController& memory_controller,
+    PromptPhase phase) {
     
     std::ostringstream prompt;
     const std::string base_system_prompt = strip_managed_constitution_sections(system_prompt_);
@@ -137,10 +138,13 @@ std::string PromptOrchestrator::build_final_prompt(
     }
 
     // ===== 6. 出力契約（独立セクション） =====
-    const std::string output_contract = find_system_log_section("Output Contract");
-    if (!output_contract.empty()) {
-        prompt << "# 出力契約\n\n";
-        prompt << output_contract << "\n\n";
+    // phase=Response のときのみ挿入し、Tool Phaseでは混在を防ぐ。
+    if (phase == PromptPhase::Response) {
+        const std::string output_contract = find_system_log_section("Output Contract");
+        if (!output_contract.empty()) {
+            prompt << "# 出力契約\n\n";
+            prompt << output_contract << "\n\n";
+        }
     }
 
     // ===== 7. 応答指示 =====

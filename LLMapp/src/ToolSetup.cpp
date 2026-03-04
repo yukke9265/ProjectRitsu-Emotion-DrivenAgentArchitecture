@@ -108,6 +108,19 @@ void register_default_tools(EmotionalAgent& agent) {
     // ===== ツールI/Oインターフェースの標準登録 =====
     // 入力は文字列（JSON可）として受け取り、出力/エラーを返す。
 
+    // ツール計画終了ツール（ツール不要時や計画完了時に呼び出す）
+    agent.register_tool(
+        { "finish_tool_planning", 
+          "ツールの呼び出しが不要、または全てのツール実行が完了した場合に呼び出します。このツールを呼び出すとツール実行フェーズが終了し、ユーザーへの応答生成フェーズに移行します。", 
+          "入力不要（空のJSONオブジェクト {} を推奨）" },
+        [](const std::string&) {
+            ToolResult result;
+            result.success = true;
+            result.output = "ツール実行フェーズを終了しました。";
+            return result;
+        }
+    );
+
     agent.register_tool(
         { "get_current_time", "現在のローカル時刻を取得します", "入力不要（空文字で可）" },
         [](const std::string&) {

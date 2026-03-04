@@ -1,0 +1,23 @@
+[2026-03-04 17:22:25] One-shot log initialized
+[2026-03-04 17:22:25] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_response_minimal_v4.md
+[2026-03-04 17:22:25] start: user_input_length=0
+[2026-03-04 17:22:25] loaded_system_prompt_bytes=365
+[2026-03-04 17:22:25] model_path=d:\0_OllamaModels\WS\models\Qwen_Qwen3-4B-Instruct-2507-Q5_K_M.gguf
+[2026-03-04 17:22:25] agent_initialize_begin
+[2026-03-04 17:22:26] agent_initialize_success
+[2026-03-04 17:22:26] raw_output_logging=enabled
+[2026-03-04 17:22:26] response_phase_only_mode=enabled
+[raw_output_begin] phase=response
+このプロンプトのすべての指示に従って、自然で丁寧な応答を出力してください。
+
+<assistant_response>
+おはよう！  
+今日も良い一日になりますように♪
+</assistant_response><|endoftext|>
+[raw_output_end] phase=response
+[2026-03-04 17:22:31] inference_done_ms=4748
+[2026-03-04 17:22:31] response_length=66
+[2026-03-04 17:22:31] response_text_begin
+[2026-03-04 17:22:31] おはよう！  
+今日も良い一日になりますように♪
+[2026-03-04 17:22:31] response_text_end

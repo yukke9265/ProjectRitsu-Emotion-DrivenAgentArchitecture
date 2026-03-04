@@ -28,6 +28,21 @@ Set-Location .\LLMapp\x64\Debug
 .\LLMapp.exe
 ```
 
+### システムプロンプトを指定して1回だけ推論
+
+```powershell
+Set-Location .\LLMapp\x64\Debug
+.\LLMapp.exe --once-system-prompt ..\..\promptTest\TestPrompt.md
+```
+
+- 任意で入力文を追加:
+
+```powershell
+.\LLMapp.exe --once-system-prompt ..\..\promptTest\TestPrompt.md "このプロンプトで自己紹介して"
+```
+
+- 詳細メモ: `promptTest/ONE_SHOT_USAGE.md`
+
 ## 補足
 
 - 生成物（`agent_state.dat`, `x64/**`）は原則コミットしません。

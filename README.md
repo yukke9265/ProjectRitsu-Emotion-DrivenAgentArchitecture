@@ -24,6 +24,21 @@ Set-Location .\LLMapp\x64\Debug
 .\LLMapp.exe
 ```
 
+### システムプロンプトを1回だけテスト実行
+
+```powershell
+Set-Location .\LLMapp\x64\Debug
+.\LLMapp.exe --once-system-prompt ..\..\promptTest\TestPrompt.md
+```
+
+- 任意の入力文を渡す場合:
+
+```powershell
+.\LLMapp.exe --once-system-prompt ..\..\promptTest\TestPrompt.md "このプロンプトで自己紹介して"
+```
+
+- 詳細なコピペ例: `promptTest/ONE_SHOT_USAGE.md`
+
 ## 実行時コマンド
 
 - `debug`

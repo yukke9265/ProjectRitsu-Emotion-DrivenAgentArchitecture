@@ -1,0 +1,32 @@
+[2026-03-04 17:19:48] One-shot log initialized
+[2026-03-04 17:19:48] start: system_prompt_file=D:\0_OllamaModels\WS\promptTest\Template_tool_minimal_v3.md
+[2026-03-04 17:19:48] start: user_input_length=0
+[2026-03-04 17:19:48] loaded_system_prompt_bytes=241
+[2026-03-04 17:19:48] model_path=d:\0_OllamaModels\WS\models\gemma-2-9b-it-Q5_K_M.gguf
+[2026-03-04 17:19:48] agent_initialize_begin
+[2026-03-04 17:19:51] agent_initialize_success
+[2026-03-04 17:19:51] raw_output_logging=enabled
+[2026-03-04 17:19:51] tool_phase_only_mode=enabled
+[raw_output_begin] phase=tool-only index=1
+<end_of_turn>
+[raw_output_end] phase=tool-only index=1
+[raw_output_begin] phase=tool-only index=2
+<tool_call>
+name: get_current_time
+input: {}
+</tool_call> 
+
+
+```
+
+<end_of_turn>
+[raw_output_end] phase=tool-only index=2
+[2026-03-04 17:20:42] inference_done_ms=50593
+[2026-03-04 17:20:42] response_length=57
+[2026-03-04 17:20:42] response_text_begin
+[2026-03-04 17:20:42] <tool_call>
+name: get_current_time
+input:
+{}
+</tool_call>
+[2026-03-04 17:20:42] response_text_end
