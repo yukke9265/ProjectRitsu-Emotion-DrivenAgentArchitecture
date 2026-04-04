@@ -117,6 +117,159 @@ void log_unknown_analysis_labels(const AnalyzedInput& result, const char* source
     }
     std::cerr << " | input=\"" << result.raw_text << "\"" << std::endl;
 }
+
+std::string trim_copy(const std::string& s) {
+    size_t start = 0;
+    while (start < s.size() && std::isspace(static_cast<unsigned char>(s[start])) != 0) {
+        ++start;
+    }
+
+    size_t end = s.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(s[end - 1])) != 0) {
+        --end;
+    }
+
+    return s.substr(start, end - start);
+}
+
+std::string normalize_analysis_text(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+
+    bool prev_space = false;
+    bool prev_newline = false;
+
+    for (char ch : text) {
+        const unsigned char uch = static_cast<unsigned char>(ch);
+        if (ch == '\r') {
+            continue;
+        }
+
+        if (ch == '\n') {
+            if (!prev_newline) {
+                out.push_back('\n');
+                prev_newline = true;
+            }
+            prev_space = false;
+            continue;
+        }
+
+        if (std::isspace(uch) != 0) {
+            if (!prev_space) {
+                out.push_back(' ');
+                prev_space = true;
+            }
+            prev_newline = false;
+            continue;
+        }
+
+        // 制御文字は除去する（改行は上で処理済み）
+        if (std::iscntrl(uch) != 0) {
+            continue;
+        }
+
+        out.push_back(ch);
+        prev_space = false;
+        prev_newline = false;
+    }
+
+    return trim_copy(out);
+}
+
+std::string extract_first_json_object(const std::string& text) {
+    bool in_string = false;
+    bool escape = false;
+    int depth = 0;
+    size_t start = std::string::npos;
+
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char ch = text[i];
+
+        if (escape) {
+            escape = false;
+            continue;
+        }
+
+        if (ch == '\\') {
+            if (in_string) {
+                escape = true;
+            }
+            continue;
+        }
+
+        if (ch == '"') {
+            in_string = !in_string;
+            continue;
+        }
+
+        if (in_string) {
+            continue;
+        }
+
+        if (ch == '{') {
+            if (depth == 0) {
+                start = i;
+            }
+            ++depth;
+            continue;
+        }
+
+        if (ch == '}') {
+            if (depth == 0) {
+                continue;
+            }
+            --depth;
+            if (depth == 0 && start != std::string::npos) {
+                return text.substr(start, i - start + 1);
+            }
+        }
+    }
+
+    return "";
+}
+
+std::string unescape_json_string(std::string s) {
+    s = std::regex_replace(s, std::regex(R"(\\n)"), "\n");
+    s = std::regex_replace(s, std::regex(R"(\\r)"), "\r");
+    s = std::regex_replace(s, std::regex(R"(\\t)"), "\t");
+    s = std::regex_replace(s, std::regex(R"(\\\")"), "\"");
+    s = std::regex_replace(s, std::regex(R"(\\\\)"), "\\");
+    return s;
+}
+
+std::string find_missing_field_message(const AnalyzedInput& result) {
+    std::vector<std::string> missing;
+    if (result.topic.empty()) {
+        missing.push_back("topic");
+    }
+    if (result.intent == Intent::UNKNOWN) {
+        missing.push_back("intent");
+    }
+    if (result.evaluation_to_ai == EvaluationToAI::UNKNOWN) {
+        missing.push_back("evaluation_to_ai");
+    }
+    if (result.keywords.empty()) {
+        missing.push_back("keywords");
+    }
+    if (result.sentiment_score < INPUT_ANALYZER_SENTIMENT_MIN ||
+        result.sentiment_score > INPUT_ANALYZER_SENTIMENT_MAX) {
+        missing.push_back("sentiment_score");
+    }
+
+    if (missing.empty()) {
+        return "";
+    }
+
+    std::ostringstream oss;
+    oss << "必須項目不足/不正: ";
+    for (size_t i = 0; i < missing.size(); ++i) {
+        if (i > 0) {
+            oss << ", ";
+        }
+        oss << missing[i];
+    }
+    return oss.str();
+}
 }
 
 InputAnalyzer::InputAnalyzer() 
@@ -156,11 +309,13 @@ void InputAnalyzer::initialize_dictionaries() {
 
 AnalyzedInput InputAnalyzer::analyze(const std::string& user_input,
                                      const std::deque<ConversationTurn>* recent_history) {
+    const std::string normalized_input = normalize_analysis_text(user_input);
+
     // ハイブリッドモード：LLMとキーワードベースの両方を試行
     if (use_llm_ && llm_inference_ != nullptr) {
         try {
             // LLMベースの分析を試行
-            AnalyzedInput llm_result = analyze_with_llm(user_input, recent_history);
+            AnalyzedInput llm_result = analyze_with_llm(normalized_input, recent_history);
             
             // LLM結果の妥当性チェック（基本的な検証）
             if (llm_result.intent != Intent::UNKNOWN && 
@@ -179,7 +334,7 @@ AnalyzedInput InputAnalyzer::analyze(const std::string& user_input,
     }
     
     // キーワードベースの分析（フォールバック or デフォルト）
-    return analyze_with_keywords(user_input);
+    return analyze_with_keywords(normalized_input);
 }
 
 AnalyzedInput InputAnalyzer::analyze_with_keywords(const std::string& user_input) {
@@ -231,6 +386,8 @@ AnalyzedInput InputAnalyzer::analyze_with_llm(const std::string& user_input,
                 retry_prompt += "\n\n【重要】前回の出力は不完全でした。";
                 retry_prompt += "topic/intent/evaluation_to_ai/sentiment_score を必ず有効値で埋め、";
                 retry_prompt += "JSONオブジェクトのみを1つ返してください。";
+                retry_prompt += "\n前回エラー: ";
+                retry_prompt += e.what();
             }
             
             // LLMで単発推論（KVキャッシュは自動クリア）
@@ -280,127 +437,43 @@ AnalyzedInput InputAnalyzer::analyze_with_llm(const std::string& user_input,
 
 std::string InputAnalyzer::create_analysis_prompt(const std::string& user_input,
                                                   const std::deque<ConversationTurn>* recent_history) {
-    std::string prompt = R"(あなたはユーザー入力を構造化分析する専門家です。
-以下のユーザー発言を分析し、JSON形式で出力してください。
-
-)";
+    std::string prompt =
+        "あなたはユーザー発話を厳密JSONに変換する分析器です。\n"
+        "出力はJSONオブジェクト1個のみ。説明文・コードブロックは禁止。\n\n";
 
     // 会話履歴がある場合は追加
     if (recent_history != nullptr && !recent_history->empty()) {
-        prompt += "【最近の会話履歴】\n";
-        // 最新5ターンまでを取得
+                prompt += "【最近の会話履歴】\n";
         int turns_to_show = std::min(INPUT_ANALYZER_HISTORY_TURNS_TO_SHOW,
                                      static_cast<int>(recent_history->size()));
         auto start_iter = recent_history->end() - turns_to_show;
         
         for (auto it = start_iter; it != recent_history->end(); ++it) {
-            prompt += it->role + ": " + it->content + "\n";
+                        prompt += it->role + ": " + normalize_analysis_text(it->content) + "\n";
         }
         prompt += "\n";
     }
 
-    prompt += "【ユーザー発言】\n" + user_input + R"(
-
-【会話履歴を考慮した分析の重要ルール】
-1. **指示語の解釈**: 「それ」「これ」「その話」などは会話履歴から参照先を特定し、topicに反映
-2. **前の回答への反応**: 
-   - 「もっと〜して」「〜してください」「〜がない」「〜が足りない」などの改善要求は criticism
-   - 前の回答への不満表現（「わからない」「抽象的」「不十分」）は evaluation=negative
-3. **話題転換の検出**: 
-   - 「ところで」「さて」「それはそうと」「話は変わるけど」で始まる発言は casual（新しい話題）
-   - 前の会話と無関係な内容の場合も casual
-4. **継続的な話題**: 会話履歴の内容を引き継ぐ場合、topicは履歴の文脈を含める
-
-【出力形式】
-{
-  "topic": "発言のトピック（何について話しているか）",
-  "intent": "意図（praise/criticism/question/greeting/casual のいずれか）",
-  "evaluation_to_ai": "AIへの評価（positive/neutral/negative のいずれか）",
-  "keywords": ["キーワード1", "キーワード2", "キーワード3"],
-  "sentiment_score": 0.0
-}
-
-【各フィールドの判定基準】
-
-◆ intent（発言の主な目的）:
-  - praise: AIを褒める、感謝する、評価する（「すごい」「ありがとう」「助かった」）
-  - criticism: AIを批判する、不満を述べる、改善要求（「ダメ」「違う」「もっとちゃんと」）
-  - question: 情報を求める、疑問を投げかける（「〜は何ですか？」「どうやって？」「本当に？」）
-  - greeting: 挨拶、呼びかけ（「こんにちは」「よろしく」「おはよう」）- AIとの関係構築が目的
-  - casual: 雑談、日常会話（「良い天気」「そうなんだ」）- 情報交換や感想の共有
-
-◆ evaluation_to_ai（AI自身に対する評価・態度）:
-  - positive: AIの能力や応答を明示的に評価・称賛している
-  - negative: AIの能力や応答を明示的に批判・否定している
-  - neutral: AIへの評価が含まれない、または中立的
-  ※注意: 発言全体の雰囲気ではなく「AI自身への評価」に焦点を当てる
-
-◆ sentiment_score（発言全体の感情の強さ）:
-  - 1.0: 非常に強い喜び・興奮・感謝
-  - 0.7～0.9: 明確なポジティブ感情
-  - 0.3～0.6: 穏やかなポジティブ
-  - 0.0～0.2: ほぼ中立、淡々とした表現
-  - -0.3～-0.6: やや不満やネガティブ
-  - -0.7～-0.9: 明確な不満・批判
-  - -1.0: 強い怒り・拒絶
-  ※混合感情（「悪くないけど」「ありがとう。でも」）は中間値（-0.3～0.3）
-
-【重要な注意事項】
-1. 皮肉や社交辞令に注意: 短く淡々とした称賛（「へぇ」「すごいね」のみ）は0.0～0.3程度に抑える
-2. 挨拶の感情値: 「こんにちは」「よろしく」だけなら0.0～0.3（明るい修飾語があれば0.5～0.8）
-3. 混合感情: 肯定と否定が混在する場合、より強い方に寄せるが極端にしない（-0.6～0.6）
-4. 質問のトーン: 疑念を含む質問（「本当に？」）は evaluation=neutral, sentiment=0.0～0.3
-5. 改善要求は criticism: 「もっと〜して」「〜が足りない」「〜がない」などは批判として扱う
-
-【分析例】
-
-■ 単独の発言（会話履歴なし）
-入力: "助かります。ただ、もう少し詳細が知りたいです"
-→ {"topic":"情報の詳細度", "intent":"question", "evaluation_to_ai":"neutral", "keywords":["助かる","詳細","知りたい"], "sentiment_score":0.3}
-
-入力: "ふーん。なるほどね"
-→ {"topic":"相槌", "intent":"casual", "evaluation_to_ai":"neutral", "keywords":["相槌","なるほど"], "sentiment_score":0.1}
-
-入力: "最近暑くなってきましたね"
-→ {"topic":"気候", "intent":"casual", "evaluation_to_ai":"neutral", "keywords":["最近","暑い","気候"], "sentiment_score":0.2}
-
-入力: "まあまあだけど、もっと具体例があるといいな"
-→ {"topic":"具体例の不足", "intent":"criticism", "evaluation_to_ai":"neutral", "keywords":["まあまあ","具体例","欲しい"], "sentiment_score":-0.3}
-
-■ 会話履歴を考慮した分析（重要）
-会話履歴: "user: Pythonの辞書について教えて" → "assistant: 辞書はキーと値のペアを格納します"
-入力: "それはわかった。具体例を教えて"
-→ {"topic":"Pythonの辞書の具体例", "intent":"question", "evaluation_to_ai":"neutral", "keywords":["わかった","具体例","辞書"], "sentiment_score":0.1}
-※「それ」=Pythonの辞書を指す
-
-会話履歴: "user: 機械学習について" → "assistant: データからパターンを学習する技術です"
-入力: "もっと具体的に説明してよ。そんな抽象的な説明じゃわからない"
-→ {"topic":"機械学習の説明の不満", "intent":"criticism", "evaluation_to_ai":"negative", "keywords":["具体的","抽象的","わからない"], "sentiment_score":-0.5}
-※前の回答への不満 → criticism + negative
-
-会話履歴: "user: C++のポインタについて" → "assistant: メモリアドレスを格納する変数です"
-入力: "ところで、今日は良い天気だね"
-→ {"topic":"天気", "intent":"casual", "evaluation_to_ai":"neutral", "keywords":["ところで","天気","良い"], "sentiment_score":0.2}
-※「ところで」は話題転換のマーカー → casual
-
-会話履歴: "user: メモリリークって何？" → "assistant: メモリを解放し忘れることです" → "user: 防ぐ方法は？" → "assistant: スマートポインタを使います"
-入力: "なるほど！それすごく便利そう"
-→ {"topic":"スマートポインタの有用性", "intent":"praise", "evaluation_to_ai":"neutral", "keywords":["なるほど","便利","スマートポインタ"], "sentiment_score":0.6}
-※「それ」=スマートポインタを指す、ポジティブな反応 → praise
-
-【出力の絶対ルール（厳守）】
-1. 出力はJSONオブジェクト1個のみ（先頭は"{"、末尾は"}"）
-2. JSONの前後に文字を一切付けない（前置き・注釈・説明・謝罪・提案を禁止）
-3. Markdown記法を禁止（```json, ```, 箇条書き, 矢印, 絵文字を禁止）
-4. 必須フィールド topic / intent / evaluation_to_ai / keywords / sentiment_score を必ず埋める
-5. intentは praise|criticism|question|greeting|casual のいずれか
-6. evaluation_to_aiは positive|neutral|negative のいずれか
-7. keywords は1件以上の文字列配列
-8. sentiment_score は -1.0 から 1.0 の数値
-
-【出力】
-JSONオブジェクトのみを出力してください。
-)";
+        prompt += "【ユーザー発言】\n" + normalize_analysis_text(user_input) + "\n\n";
+        prompt +=
+                "【判定ルール】\n"
+                "- intentは praise|criticism|question|greeting|casual のみ。\n"
+                "- AIの回答品質への不満/改善要求は criticism。\n"
+                "- AIへの明確な否定評価があれば evaluation_to_ai=negative。\n"
+                "- 指示語（それ/これ）は会話履歴を参照して topic を具体化。\n"
+                "- sentiment_score は -1.0〜1.0。\n\n"
+                "【出力スキーマ】\n"
+                "{\n"
+                "  \"topic\": \"...\",\n"
+                "  \"intent\": \"praise|criticism|question|greeting|casual\",\n"
+                "  \"evaluation_to_ai\": \"positive|neutral|negative\",\n"
+                "  \"keywords\": [\"...\"],\n"
+                "  \"sentiment_score\": 0.0\n"
+                "}\n\n"
+                "【制約】\n"
+                "- JSONオブジェクト1個のみを返す。\n"
+                "- 前置き/解説/Markdown/コードブロックは禁止。\n"
+                "- 必須キーが欠ける出力は禁止。\n";
         
     return prompt;
 }
@@ -412,81 +485,56 @@ AnalyzedInput InputAnalyzer::parse_llm_response(
     AnalyzedInput result;
     result.raw_text = raw_text;
     
-    try {
-        // JSONブロックを抽出（{...}の部分）
-        std::regex json_regex(R"(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})");
-        std::smatch match;
-        std::string json_str;
-        
-        if (std::regex_search(llm_output, match, json_regex)) {
-            json_str = match.str();
-        } else {
-            throw std::runtime_error("JSON形式が見つかりません");
-        }
-        
-        // 厳格JSONパース（必須項目が欠けたら失敗）
-        bool has_topic = false;
-        bool has_intent = false;
-        bool has_evaluation = false;
-        bool has_sentiment = false;
-        bool has_keywords = false;
+    const std::string json_str = extract_first_json_object(llm_output);
+    if (json_str.empty()) {
+        throw std::runtime_error("JSONオブジェクトを抽出できません");
+    }
 
-        // topic の抽出
-        std::regex topic_regex(R"xxx("topic"\s*:\s*"([^"]*)")xxx");
-        if (std::regex_search(json_str, match, topic_regex) && match.size() > 1) {
-            result.topic = match[1].str();
-            has_topic = !result.topic.empty();
-        }
-        
-        // intent の抽出
-        std::regex intent_regex(R"xxx("intent"\s*:\s*"([^"]*)")xxx");
-        if (std::regex_search(json_str, match, intent_regex) && match.size() > 1) {
-            result.intent = intent_from_string(match[1].str());
-            has_intent = result.intent != Intent::UNKNOWN;
-        }
-        
-        // evaluation_to_ai の抽出
-        std::regex eval_regex(R"xxx("evaluation_to_ai"\s*:\s*"([^"]*)")xxx");
-        if (std::regex_search(json_str, match, eval_regex) && match.size() > 1) {
-            result.evaluation_to_ai = evaluation_from_string(match[1].str());
-            has_evaluation = result.evaluation_to_ai != EvaluationToAI::UNKNOWN;
-        }
-        
-        // sentiment_score の抽出
-        std::regex sentiment_regex(R"("sentiment_score"\s*:\s*(-?\d+\.?\d*))");
-        if (std::regex_search(json_str, match, sentiment_regex) && match.size() > 1) {
-            result.sentiment_score = std::stod(match[1].str());
-            // 範囲チェック
-            result.sentiment_score = std::max(INPUT_ANALYZER_SENTIMENT_MIN,
-                                              std::min(INPUT_ANALYZER_SENTIMENT_MAX, result.sentiment_score));
-            has_sentiment = true;
-        }
-        
-        // keywords の抽出
-        std::regex keywords_regex(R"("keywords"\s*:\s*\[([^\]]*)\])");
-        if (std::regex_search(json_str, match, keywords_regex) && match.size() > 1) {
-            std::string keywords_str = match[1].str();
-            std::regex keyword_regex(R"xxx("([^"]*)")xxx");
-            auto keywords_begin = std::sregex_iterator(keywords_str.begin(), keywords_str.end(), keyword_regex);
-            auto keywords_end = std::sregex_iterator();
-            
-            for (std::sregex_iterator i = keywords_begin; i != keywords_end; ++i) {
-                std::smatch keyword_match = *i;
-                if (keyword_match.size() > 1) {
-                    result.keywords.push_back(keyword_match[1].str());
+    std::smatch match;
+
+    const std::regex topic_regex(R"("topic"\s*:\s*"((?:\\.|[^"\\])*)")");
+    if (std::regex_search(json_str, match, topic_regex) && match.size() > 1) {
+        result.topic = trim_copy(unescape_json_string(match[1].str()));
+    }
+
+    const std::regex intent_regex(R"("intent"\s*:\s*"((?:\\.|[^"\\])*)")");
+    if (std::regex_search(json_str, match, intent_regex) && match.size() > 1) {
+        result.intent = intent_from_string(trim_copy(unescape_json_string(match[1].str())));
+    }
+
+    const std::regex eval_regex(R"("evaluation_to_ai"\s*:\s*"((?:\\.|[^"\\])*)")");
+    if (std::regex_search(json_str, match, eval_regex) && match.size() > 1) {
+        result.evaluation_to_ai = evaluation_from_string(trim_copy(unescape_json_string(match[1].str())));
+    }
+
+    const std::regex sentiment_regex(R"("sentiment_score"\s*:\s*(-?\d+(?:\.\d+)?))");
+    if (std::regex_search(json_str, match, sentiment_regex) && match.size() > 1) {
+        result.sentiment_score = std::stod(match[1].str());
+        result.sentiment_score = std::max(INPUT_ANALYZER_SENTIMENT_MIN,
+                                          std::min(INPUT_ANALYZER_SENTIMENT_MAX, result.sentiment_score));
+    }
+
+    const std::regex keywords_regex(R"("keywords"\s*:\s*\[((?:.|\n)*?)\])");
+    if (std::regex_search(json_str, match, keywords_regex) && match.size() > 1) {
+        const std::string keywords_str = match[1].str();
+        const std::regex keyword_regex(R"("((?:\\.|[^"\\])*)")");
+        auto keywords_begin = std::sregex_iterator(keywords_str.begin(), keywords_str.end(), keyword_regex);
+        auto keywords_end = std::sregex_iterator();
+
+        for (std::sregex_iterator i = keywords_begin; i != keywords_end; ++i) {
+            std::smatch keyword_match = *i;
+            if (keyword_match.size() > 1) {
+                const std::string kw = trim_copy(unescape_json_string(keyword_match[1].str()));
+                if (!kw.empty()) {
+                    result.keywords.push_back(kw);
                 }
             }
-            has_keywords = !result.keywords.empty();
         }
+    }
 
-        // 必須項目の検証（不足時は再生成リトライへ）
-        if (!has_topic || !has_intent || !has_evaluation || !has_sentiment || !has_keywords) {
-            throw std::runtime_error("必須JSONフィールドが不足または空です");
-        }
-        
-    } catch (const std::exception& e) {
-        // パース失敗 - 例外を再スローして上位でリトライ処理させる
-        throw;
+    const std::string missing_message = find_missing_field_message(result);
+    if (!missing_message.empty()) {
+        throw std::runtime_error(missing_message);
     }
     
     return result;
