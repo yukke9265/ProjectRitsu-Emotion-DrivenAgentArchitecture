@@ -104,6 +104,9 @@
 #define INPUT_ANALYZER_MIN_KEYWORD_LENGTH 3           // ↑ ノイズ語減少 / ↓ 短語（例: AI, C++）を拾いやすい
 #define INPUT_ANALYZER_DEFAULT_TOPIC "general"       // キーワード抽出不能時のフォールバック話題
 #define INPUT_ANALYZER_LOG_UNKNOWN_LABELS 1           // 1: UNKNOWN検出時に警告ログ出力 / 0: 出力しない
+#define INPUT_ANALYZER_HISTORY_CONTENT_MAX_LENGTH 180 // 1発話あたり履歴反映最大長（入力トークン節約）
+#define INPUT_ANALYZER_HISTORY_CHAR_BUDGET 900        // 履歴全体の最大反映文字数
+#define INPUT_ANALYZER_LLM_BYPASS_MAX_INPUT_LENGTH 64 // 短文の明白ケースはLLMを使わず高速解析
 
 // ===== InputAnalyzer 辞書設定 =====
 // 追加すると該当判定の感度が上がる。語が広すぎると誤検出しやすくなる点に注意。

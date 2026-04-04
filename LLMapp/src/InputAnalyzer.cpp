@@ -176,6 +176,13 @@ std::string normalize_analysis_text(const std::string& text) {
     return trim_copy(out);
 }
 
+std::string truncate_for_prompt(const std::string& text, size_t max_len) {
+    if (text.size() <= max_len) {
+        return text;
+    }
+    return text.substr(0, max_len) + "...";
+}
+
 std::string extract_first_json_object(const std::string& text) {
     bool in_string = false;
     bool escape = false;
@@ -311,6 +318,23 @@ AnalyzedInput InputAnalyzer::analyze(const std::string& user_input,
                                      const std::deque<ConversationTurn>* recent_history) {
     const std::string normalized_input = normalize_analysis_text(user_input);
 
+    if (use_llm_ && llm_inference_ != nullptr) {
+        const bool has_question =
+            normalized_input.find("?") != std::string::npos ||
+            normalized_input.find("？") != std::string::npos;
+        const bool has_directive =
+            normalized_input.find("して") != std::string::npos ||
+            normalized_input.find("ください") != std::string::npos;
+
+        if (normalized_input.size() <= INPUT_ANALYZER_LLM_BYPASS_MAX_INPUT_LENGTH &&
+            !has_question && !has_directive) {
+            const Intent quick_intent = classify_intent(normalized_input);
+            if (quick_intent == Intent::GREETING || quick_intent == Intent::CASUAL) {
+                return analyze_with_keywords(normalized_input);
+            }
+        }
+    }
+
     // ハイブリッドモード：LLMとキーワードベースの両方を試行
     if (use_llm_ && llm_inference_ != nullptr) {
         try {
@@ -375,6 +399,7 @@ AnalyzedInput InputAnalyzer::analyze_with_llm(const std::string& user_input,
     }
     
     // パース成功 + 意味的妥当性チェック成功まで最大LLM_PARSE_RETRY_COUNT回リトライ
+    std::string previous_error;
     for (int retry = 0; retry < LLM_PARSE_RETRY_COUNT; retry++) {
         try {
             if (debug_mode_ && retry > 0) {
@@ -386,8 +411,10 @@ AnalyzedInput InputAnalyzer::analyze_with_llm(const std::string& user_input,
                 retry_prompt += "\n\n【重要】前回の出力は不完全でした。";
                 retry_prompt += "topic/intent/evaluation_to_ai/sentiment_score を必ず有効値で埋め、";
                 retry_prompt += "JSONオブジェクトのみを1つ返してください。";
-                retry_prompt += "\n前回エラー: ";
-                retry_prompt += e.what();
+                if (!previous_error.empty()) {
+                    retry_prompt += "\n前回エラー: ";
+                    retry_prompt += previous_error;
+                }
             }
             
             // LLMで単発推論（KVキャッシュは自動クリア）
@@ -417,6 +444,7 @@ AnalyzedInput InputAnalyzer::analyze_with_llm(const std::string& user_input,
             return result;
             
         } catch (const std::exception& e) {
+            previous_error = e.what();
             std::cout << "[警告] LLM応答のパースに失敗（試行 " << retry + 1 << "/" 
                       << LLM_PARSE_RETRY_COUNT << "）: " << e.what() << std::endl;
             
@@ -447,9 +475,26 @@ std::string InputAnalyzer::create_analysis_prompt(const std::string& user_input,
         int turns_to_show = std::min(INPUT_ANALYZER_HISTORY_TURNS_TO_SHOW,
                                      static_cast<int>(recent_history->size()));
         auto start_iter = recent_history->end() - turns_to_show;
+        size_t history_budget = INPUT_ANALYZER_HISTORY_CHAR_BUDGET;
         
         for (auto it = start_iter; it != recent_history->end(); ++it) {
-                        prompt += it->role + ": " + normalize_analysis_text(it->content) + "\n";
+            if (history_budget == 0) {
+                break;
+            }
+
+            std::string normalized_history = normalize_analysis_text(it->content);
+            normalized_history = truncate_for_prompt(normalized_history, INPUT_ANALYZER_HISTORY_CONTENT_MAX_LENGTH);
+
+            std::string line = it->role + ": " + normalized_history + "\n";
+            if (line.size() > history_budget) {
+                std::string shortened = truncate_for_prompt(line, history_budget);
+                prompt += shortened;
+                history_budget = 0;
+                break;
+            }
+
+            prompt += line;
+            history_budget -= line.size();
         }
         prompt += "\n";
     }
