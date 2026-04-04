@@ -537,32 +537,32 @@ AnalyzedInput InputAnalyzer::parse_llm_response(
 
     std::smatch match;
 
-    const std::regex topic_regex(R"("topic"\s*:\s*"((?:\\.|[^"\\])*)")");
+    const std::regex topic_regex(R"xxx("topic"\s*:\s*"((?:\\.|[^"\\])*)")xxx");
     if (std::regex_search(json_str, match, topic_regex) && match.size() > 1) {
         result.topic = trim_copy(unescape_json_string(match[1].str()));
     }
 
-    const std::regex intent_regex(R"("intent"\s*:\s*"((?:\\.|[^"\\])*)")");
+    const std::regex intent_regex(R"xxx("intent"\s*:\s*"((?:\\.|[^"\\])*)")xxx");
     if (std::regex_search(json_str, match, intent_regex) && match.size() > 1) {
         result.intent = intent_from_string(trim_copy(unescape_json_string(match[1].str())));
     }
 
-    const std::regex eval_regex(R"("evaluation_to_ai"\s*:\s*"((?:\\.|[^"\\])*)")");
+    const std::regex eval_regex(R"xxx("evaluation_to_ai"\s*:\s*"((?:\\.|[^"\\])*)")xxx");
     if (std::regex_search(json_str, match, eval_regex) && match.size() > 1) {
         result.evaluation_to_ai = evaluation_from_string(trim_copy(unescape_json_string(match[1].str())));
     }
 
-    const std::regex sentiment_regex(R"("sentiment_score"\s*:\s*(-?\d+(?:\.\d+)?))");
+    const std::regex sentiment_regex(R"xxx("sentiment_score"\s*:\s*(-?\d+(?:\.\d+)?))xxx");
     if (std::regex_search(json_str, match, sentiment_regex) && match.size() > 1) {
         result.sentiment_score = std::stod(match[1].str());
         result.sentiment_score = std::max(INPUT_ANALYZER_SENTIMENT_MIN,
                                           std::min(INPUT_ANALYZER_SENTIMENT_MAX, result.sentiment_score));
     }
 
-    const std::regex keywords_regex(R"("keywords"\s*:\s*\[((?:.|\n)*?)\])");
+    const std::regex keywords_regex(R"xxx("keywords"\s*:\s*\[((?:.|\n)*?)\])xxx");
     if (std::regex_search(json_str, match, keywords_regex) && match.size() > 1) {
         const std::string keywords_str = match[1].str();
-        const std::regex keyword_regex(R"("((?:\\.|[^"\\])*)")");
+        const std::regex keyword_regex(R"xxx("((?:\\.|[^"\\])*)")xxx");
         auto keywords_begin = std::sregex_iterator(keywords_str.begin(), keywords_str.end(), keyword_regex);
         auto keywords_end = std::sregex_iterator();
 
