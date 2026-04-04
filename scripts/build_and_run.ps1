@@ -26,12 +26,52 @@ if (-not (Test-Path $solutionPath)) {
     exit 1
 }
 
+function Sync-LlamaRuntimeDlls {
+    param(
+        [string]$WorkspaceRoot,
+        [string]$BuildConfiguration,
+        [string]$BuildPlatform
+    )
+
+    $sourceCandidates = @(
+        (Join-Path $WorkspaceRoot ("external\llama.cpp\build\bin\{0}" -f $BuildConfiguration)),
+        (Join-Path $WorkspaceRoot "external\llama.cpp\build\bin\Release"),
+        (Join-Path $WorkspaceRoot "external\llama.cpp\build\bin\Debug")
+    )
+
+    $sourceDir = $sourceCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $sourceDir) {
+        Write-Warning "llama.cpp runtime DLL directory was not found under external\\llama.cpp\\build\\bin."
+        return
+    }
+
+    $targetDir = Join-Path $WorkspaceRoot ("LLMapp\\{0}\\{1}" -f $BuildPlatform, $BuildConfiguration)
+    if (-not (Test-Path $targetDir)) {
+        Write-Warning "Target output directory does not exist yet: $targetDir"
+        return
+    }
+
+    $dlls = Get-ChildItem -Path $sourceDir -Filter *.dll -File -ErrorAction SilentlyContinue
+    if (-not $dlls) {
+        Write-Warning "No runtime DLLs found in $sourceDir"
+        return
+    }
+
+    foreach ($dll in $dlls) {
+        Copy-Item -Path $dll.FullName -Destination (Join-Path $targetDir $dll.Name) -Force
+    }
+
+    Write-Host "Synced llama.cpp runtime DLLs from $sourceDir to $targetDir"
+}
+
 Write-Host "Building $solutionPath (Configuration=$Configuration, Platform=$Platform) using '$MSBuildPath'"
 & $MSBuildPath $solutionPath /t:Build /p:Configuration=$Configuration;Platform=$Platform
 if ($LASTEXITCODE -ne 0) {
     Write-Error "MSBuild failed with exit code $LASTEXITCODE"
     exit $LASTEXITCODE
 }
+
+Sync-LlamaRuntimeDlls -WorkspaceRoot $scriptDir -BuildConfiguration $Configuration -BuildPlatform $Platform
 
 # Try to find the built executable. Prefer LLMapp.exe, otherwise pick the newest .exe under the repo.
 $exeName = "LLMapp.exe"

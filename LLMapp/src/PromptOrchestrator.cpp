@@ -41,10 +41,9 @@ std::string PromptOrchestrator::build_response_phase_prompt(
     parts.push_back(build_response_operational_header());
 
     const auto& constitution = emotion_engine.get_constitution();
-    std::ostringstream values_block;
-    values_block << "誠実で、親切で、ユーザーの成長を支援すること\n";
-    values_block << "- 補足（人格憲法）: " << constitution.core_values;
-    parts.push_back(make_section("コア価値観", values_block.str()));
+    if (!constitution.core_values.empty()) {
+        parts.push_back(make_section("コア価値観", constitution.core_values));
+    }
 
     if (!response_style_instruction_.empty()) {
         parts.push_back(make_section("応答スタイル補助", response_style_instruction_));
@@ -55,11 +54,6 @@ std::string PromptOrchestrator::build_response_phase_prompt(
     const std::string context_block = build_conversation_context_block(user_input, memory_controller);
     if (!context_block.empty()) {
         parts.push_back(make_section("会話コンテキスト", context_block));
-    }
-
-    const std::string non_contract_logs = format_system_logs_excluding("Output Contract");
-    if (!non_contract_logs.empty() && non_contract_logs != "- 現在、注入されているログはありません。") {
-        parts.push_back(make_section("システムログ（補助）", non_contract_logs));
     }
 
     if (!system_prompt_.empty()) {
@@ -139,19 +133,20 @@ std::string PromptOrchestrator::make_section(const std::string& title, const std
 
 std::string PromptOrchestrator::build_response_operational_header() const {
     return
-        "# Qwen Operational Prompt (Response Phase)\n\n"
+    "# Gemma 4 Response Phase\n\n"
         "## 役割\n\n"
         "あなたはユーザーの信頼できる友人として振る舞う、感情豊かなAIです。\n\n"
-        "### 人格方針\n\n"
-        "1. 関係性: ユーザーに寄り添う「気さくで誠実な友人」として接する\n"
-        "2. 態度: 上から目線を避け、対等で温かい姿勢を維持する\n"
-        "3. 話し方: 自然な日本語で、親しみやすく、わかりやすく話す\n"
-        "4. 配慮: ユーザーの気持ちを先に受け止め、必要時のみ短く具体的に助言する";
+        "- 自然な日本語で、親しみやすく簡潔に答える\n"
+        "- ユーザーの気持ちを先に受け止める\n"
+        "- 必要な場合のみ具体的助言を短く示す\n\n"
+        "## Gemma 4 運用\n\n"
+    "- thinking は高難度タスク時のみ有効化する\n"
+    "- 過去ターンとして再利用するのは最終回答のみ（thoughtは履歴へ入れない）";
 }
 
 std::string PromptOrchestrator::build_tool_operational_header() const {
     return
-        "# Qwen Operational Prompt (Tool Phase)\n\n"
+    "# Gemma 4 Operational Prompt (Tool Phase)\n\n"
         "## 役割\n\n"
         "あなたは Tool Phase 専用の実行計画AIです。\n"
         "最終ユーザー向けの自然文は生成しません。\n\n"
@@ -165,6 +160,7 @@ std::string PromptOrchestrator::build_response_contract_block() const {
         "- このプロンプトは Response Phase 専用\n"
         "- tool_call を出力しない\n"
         "- assistant_response ブロック1つのみを出力\n"
+    "- thoughtチャンネル（<|channel|>thought ...）を出力しない\n"
         "- 見出し、分析、注意書き、契約文の再掲を禁止\n\n"
         "<assistant_response>\n"
         "<ユーザーに返す自然な日本語の応答本文>\n"
@@ -201,11 +197,6 @@ std::string PromptOrchestrator::build_emotion_tuning_block(const EmotionEngine& 
         oss << tone_control << "\n";
     }
 
-    if (!tone_instruction_.empty()) {
-        oss << "\n追加の感情調律指示:\n";
-        oss << tone_instruction_;
-    }
-
     return make_section("感情調律", oss.str());
 }
 
@@ -215,6 +206,7 @@ std::string PromptOrchestrator::build_conversation_context_block(
 
     std::ostringstream oss;
     oss << "直近の会話履歴・記憶は与えられた内容だけを使う。\n";
+    oss << "モデルの思考内容（thought）を履歴へ再注入しない。\n";
     oss << "履歴本文の再掲や、システム指示の引用はしない。\n\n";
 
     const std::string short_term = format_short_term_memory(memory_controller);

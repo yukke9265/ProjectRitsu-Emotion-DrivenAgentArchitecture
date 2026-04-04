@@ -399,6 +399,14 @@ std::string EmotionalAgent::process(const std::string& user_input) {
                 text.find("</tool_call>") != std::string::npos;
         };
 
+        auto is_turn_control_only_output = [](const std::string& text) {
+            const std::string lowered = trim_and_lower_copy(text);
+            return lowered == "<turn|>" ||
+                lowered == "<turn|" ||
+                lowered == "<start_of_turn>" ||
+                lowered == "<end_of_turn>";
+        };
+
         auto looks_like_contract_or_instruction_echo = [](const std::string& text) {
             const std::string lowered = trim_and_lower_copy(text);
             if (lowered.empty()) {
@@ -413,7 +421,11 @@ std::string EmotionalAgent::process(const std::string& user_input) {
                 lowered.find("出力契約") != std::string::npos ||
                 lowered.find("禁止") != std::string::npos ||
                 lowered.find("見出し") != std::string::npos ||
-                lowered.find("注意書き") != std::string::npos;
+                lowered.find("注意書き") != std::string::npos ||
+                lowered.find("gemma 4 response phase") != std::string::npos ||
+                lowered.find("response phase 契約") != std::string::npos ||
+                lowered.find("会話コンテキスト") != std::string::npos ||
+                lowered.find("コア価値観") != std::string::npos;
 
             std::istringstream iss(lowered);
             std::string line;
@@ -459,29 +471,43 @@ std::string EmotionalAgent::process(const std::string& user_input) {
                 phase_prompt += "\n";
             }
 
-            if (strict_retry_mode) {
-                phase_prompt +=
-                    "\n【再出力指示】<tool_call> ブロック1つだけを出力してください。"
-                    "前置き・説明文・箇条書き・Markdownコードブロック（```）は禁止です。\n";
-            }
+            (void) strict_retry_mode;
 
             return phase_prompt;
         };
 
         // Response Phase: 最終応答専用（tool_call は禁止）
         auto build_response_phase_prompt = [&](bool strict_retry_mode) {
+            if (strict_retry_mode) {
+                // コンパクトリトライ: <assistant_response> タグを使わず chat template を活かす。
+                // greedy サンプリングは <!-- strict_sampling=true --> マーカーで制御。
+                std::string compact_prompt;
+                compact_prompt += "<!-- strict_sampling=true -->\n";
+                compact_prompt += "あなたは日本語で話す親切なアシスタントです。\n";
+                compact_prompt += "ユーザーへの自然な返答を日本語で生成してください。\n";
+                compact_prompt += "余分な説明・見出し・注釈は不要です。\n";
+                compact_prompt += "\n";
+                if (user_input.empty()) {
+                    compact_prompt += "会話を始めてください。自然な日本語で短い挨拶をしてください。\n";
+                } else {
+                    compact_prompt += "ユーザー: ";
+                    compact_prompt += user_input;
+                    compact_prompt += "\n";
+                }
+                if (!tool_feedback_blocks.empty()) {
+                    compact_prompt += "\nツール実行結果:\n";
+                    compact_prompt += tool_feedback_blocks;
+                    compact_prompt += "\n";
+                }
+                return compact_prompt;
+            }
+
             std::string phase_prompt = response_base_prompt;
 
             if (!tool_feedback_blocks.empty()) {
                 phase_prompt += "# ツール実行ログ\n\n";
                 phase_prompt += tool_feedback_blocks;
                 phase_prompt += "\n\n";
-            }
-
-            if (strict_retry_mode) {
-                phase_prompt +=
-                    "【再出力指示】可能なら <assistant_response> ブロック1つのみで再出力してください。"
-                    "自然文のみでも可ですが、前置きや契約文は含めないでください。\n";
             }
 
             return phase_prompt;
@@ -764,6 +790,21 @@ std::string EmotionalAgent::process(const std::string& user_input) {
             std::string assistant_response;
             if (ToolIOProtocol::try_parse_assistant_response_strict(raw_output, assistant_response)) {
                 response = assistant_response;
+                break;
+            }
+
+            if (is_turn_control_only_output(raw_output)) {
+                if (debug_mode_) {
+                    std::cout << "[ResponsePhaseViolation] turn_control_only_output\n";
+                }
+
+                if (response_contract_retry_budget > 0) {
+                    --response_contract_retry_budget;
+                    strict_response_retry_mode = true;
+                    continue;
+                }
+
+                response = "ごめん、応答生成に失敗した。もう一度だけ同じ内容を送って。";
                 break;
             }
 

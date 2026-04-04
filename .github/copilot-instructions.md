@@ -32,6 +32,8 @@ llama.cpp を使い、人格憲法・感情状態・記憶・ツール実行を�
 5. **LLMInference** (`LLMapp/src/LLMInference.{h,cpp}`)
    - llama.cppラッパー
    - `infer_raw()` / `infer()` / `cleanup_response()`
+   - モデル内蔵 chat template を優先適用し、未取得時は生プロンプトへフォールバック
+   - 出力契約を含む厳格フェーズでは低温度サンプリングへ切り替え（形式崩れ抑制）
 
 6. **ToolIO** (`LLMapp/src/ToolIO.{h,cpp}`)
    - ツール呼び出し仕様 (`tool_channel` / `tool_call`)
@@ -112,6 +114,9 @@ Set-Location .\LLMapp\x64\Debug
 
 - Prompt構成を変えたら:
   - `prompt` 出力で章順・重複・`Output Contract` 配置を確認
+- LLMInference の入力整形/サンプリングを変えたら:
+   - chat template 適用有無（テンプレあり/なし両方）で応答が成立することを確認
+   - Tool/Response の契約違反率（tool_call / assistant_response 崩れ）を確認
 - ToolIOを変えたら:
   - `assistant_channel` と `tool_channel` の排他性を確認
 - ツール追加時:

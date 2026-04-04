@@ -3,9 +3,79 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include <vector>
 #include "ggml-backend.h"
 
 namespace {
+constexpr float kDefaultTemp = 1.0f;
+constexpr float kDefaultTopP = 0.95f;
+constexpr int32_t kDefaultTopK = 64;
+
+constexpr float kStrictTemp = 0.0f;
+constexpr float kStrictTopP = 1.0f;
+constexpr int32_t kStrictTopK = 1;
+
+bool contains_any(const std::string& text, const std::vector<std::string>& needles) {
+    for (const auto& needle : needles) {
+        if (text.find(needle) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool is_contract_sensitive_prompt(const std::string& prompt) {
+    static const std::vector<std::string> markers = {
+        "Tool Phase 契約",
+        "Response Phase 契約",
+        "<tool_call>",
+        "<assistant_response>"
+    };
+    return contains_any(prompt, markers);
+}
+
+// chat template は通常通り適用しつつ greedy サンプリングだけを強制する
+// コンパクトリトライプロンプトなどに埋め込むマーカーで検出する
+bool is_strict_sampling_only_prompt(const std::string& prompt) {
+    return prompt.find("<!-- strict_sampling=true -->") != std::string::npos;
+}
+
+std::string format_prompt_with_model_chat_template(const llama_model* model, const std::string& prompt) {
+    if (!model || prompt.empty()) {
+        return prompt;
+    }
+
+    const char* tmpl = llama_model_chat_template(model, nullptr);
+    if (!tmpl || tmpl[0] == '\0') {
+        return prompt;
+    }
+
+    const llama_chat_message chat[] = {
+        { "user", prompt.c_str() }
+    };
+
+    int32_t required = llama_chat_apply_template(tmpl, chat, 1, true, nullptr, 0);
+    if (required <= 0) {
+        return prompt;
+    }
+
+    std::vector<char> buf(static_cast<size_t>(required) + 1, '\0');
+    int32_t written = llama_chat_apply_template(
+        tmpl,
+        chat,
+        1,
+        true,
+        buf.data(),
+        static_cast<int32_t>(buf.size())
+    );
+
+    if (written <= 0) {
+        return prompt;
+    }
+
+    return std::string(buf.data(), static_cast<size_t>(written));
+}
+
 void print_vram_free_debug() {
     bool gpu_device_found = false;
 
@@ -62,6 +132,9 @@ bool LLMInference::initialize() {
         llama_backend_init();
 
         // サンプリングパラメータの設定（繰り返し防止）
+        params_.sampling.temp = kDefaultTemp;
+        params_.sampling.top_p = kDefaultTopP;
+        params_.sampling.top_k = kDefaultTopK;
         params_.sampling.penalty_repeat = 1.15f;  // repeat_penalty（強化）
         params_.sampling.penalty_last_n = 128;    // 直近128トークンを監視
 
@@ -118,12 +191,37 @@ std::string LLMInference::infer_raw(const std::string& prompt) {
     }
 
     try {
+        const bool strict_contract_prompt = is_contract_sensitive_prompt(prompt);
+        const bool use_strict_sampling = strict_contract_prompt || is_strict_sampling_only_prompt(prompt);
+
+        common_params_sampling sampling_for_turn = params_.sampling;
+        if (use_strict_sampling) {
+            sampling_for_turn.temp = kStrictTemp;
+            sampling_for_turn.top_p = kStrictTopP;
+            sampling_for_turn.top_k = kStrictTopK;
+        }
+
+        if (sampler_) {
+            common_sampler_free(sampler_);
+            sampler_ = nullptr;
+        }
+
+        sampler_ = common_sampler_init(model_, sampling_for_turn);
+        if (!sampler_) {
+            last_error_ = "サンプラーの再初期化に失敗しました。";
+            return "";
+        }
+
+        const std::string model_input = strict_contract_prompt
+            ? prompt
+            : format_prompt_with_model_chat_template(model_, prompt);
+
         if (debug_mode_) {
             print_vram_free_debug();
         }
 
         // トークン化
-        std::vector<llama_token> prompt_tokens = common_tokenize(ctx_, prompt, true);
+        std::vector<llama_token> prompt_tokens = common_tokenize(ctx_, model_input, true);
 
         // 長文プロンプトは分割デコード（n_batch超過によるASSERT回避）
         constexpr int kDecodeChunkSize = 256;
@@ -191,6 +289,18 @@ std::string LLMInference::infer_raw(const std::string& prompt) {
 // 制御トークンと不要な文字列をクリーンアップするヘルパー関数
 std::string LLMInference::cleanup_response(const std::string& raw_output) {
     std::string result = raw_output;
+
+    // Gemma 4 thinking形式が混在した場合は、final channel側のみを返す。
+    const std::string thought_open = "<|channel|>thought";
+    size_t thought_pos = result.find(thought_open);
+    if (thought_pos != std::string::npos) {
+        size_t thought_close = result.find("<|channel|>", thought_pos + thought_open.size());
+        if (thought_close != std::string::npos) {
+            result.erase(thought_pos, (thought_close - thought_pos) + std::string("<|channel|>").size());
+        } else {
+            result.erase(thought_pos);
+        }
+    }
 
     // 改行コードを統一
     result.erase(std::remove(result.begin(), result.end(), '\r'), result.end());

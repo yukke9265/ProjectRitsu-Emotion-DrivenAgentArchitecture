@@ -2,7 +2,8 @@
 
 // ===== LLMモデル設定 =====
 // ここを変更するだけで、全てのプログラムで使用するモデルが変わります
-#define DEFAULT_MODEL_PATH "D:\\0_OllamaModels\\WS\\models\\Qwen3.5-9B-UD-Q4_K_XL.gguf"
+#define DEFAULT_MODEL_PATH "D:\\0_OllamaModels\\WS\\models\\gemma-4-E4B-it-Q5_K_M.gguf"
+	
 	
 // ===== LLMパラメータ設定 =====
 #define DEFAULT_GPU_LAYERS 99        // ↑ 速くなるがVRAM消費増 / ↓ 遅くなるがVRAM節約

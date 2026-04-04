@@ -147,6 +147,7 @@
     <ClCompile Include="..\external\llama.cpp\build\common\build-info.cpp" />
     <ClCompile Include="..\external\llama.cpp\common\common.cpp" />
     <ClCompile Include="..\external\llama.cpp\common\log.cpp" />
+    <ClCompile Include="..\external\llama.cpp\common\reasoning-budget.cpp" />
     <ClCompile Include="..\external\llama.cpp\common\sampling.cpp" />
     <ClCompile Include="..\external\llama.cpp\common\unicode.cpp" />
     <ClCompile Include="main.cpp">
