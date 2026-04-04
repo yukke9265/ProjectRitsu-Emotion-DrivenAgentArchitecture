@@ -2,54 +2,8 @@
 #include "Config.h"
 #include <sstream>
 
-namespace {
-
-bool is_managed_constitution_heading(const std::string& line) {
-    return line == "## コア価値観"
-        || line == "## コミュニケーションスタイル"
-        || line == "## 返答スタイル"
-        || line == "## 返答の文章量について";
-}
-
-bool is_markdown_heading(const std::string& line) {
-    return !line.empty() && line[0] == '#';
-}
-
-std::string strip_managed_constitution_sections(const std::string& system_prompt) {
-    std::istringstream iss(system_prompt);
-    std::ostringstream oss;
-    std::string line;
-    bool skipping_managed_section = false;
-    bool wrote_any = false;
-
-    while (std::getline(iss, line)) {
-        if (is_managed_constitution_heading(line)) {
-            skipping_managed_section = true;
-            continue;
-        }
-
-        if (skipping_managed_section && is_markdown_heading(line)) {
-            skipping_managed_section = false;
-        }
-
-        if (skipping_managed_section) {
-            continue;
-        }
-
-        if (wrote_any) {
-            oss << "\n";
-        }
-        oss << line;
-        wrote_any = true;
-    }
-
-    return oss.str();
-}
-
-}
-
 PromptOrchestrator::PromptOrchestrator()
-    : system_prompt_(DEFAULT_SYSTEM_PROMPT)
+    : system_prompt_("")
     , tone_instruction_(
         "【感情調律指示】\n"
         "入力される感情パラメータに従い、言葉のトーンを微調整します。\n"
@@ -72,57 +26,204 @@ std::string PromptOrchestrator::build_final_prompt(
     const EmotionEngine& emotion_engine,
     const MemoryController& memory_controller,
     PromptPhase phase) {
-    
-    std::ostringstream prompt;
-    const std::string base_system_prompt = strip_managed_constitution_sections(system_prompt_);
+    if (phase == PromptPhase::Tool) {
+        return build_tool_phase_prompt(user_input, emotion_engine, memory_controller);
+    }
+    return build_response_phase_prompt(user_input, emotion_engine, memory_controller);
+}
 
-    // ===== 1. 人格憲法（システムプロンプト） =====
-    prompt << "# あなたの人格憲法\n\n";
-    prompt << base_system_prompt << "\n\n";
+std::string PromptOrchestrator::build_response_phase_prompt(
+    const std::string& user_input,
+    const EmotionEngine& emotion_engine,
+    const MemoryController& memory_controller) {
+
+    std::vector<std::string> parts;
+    parts.push_back(build_response_operational_header());
 
     const auto& constitution = emotion_engine.get_constitution();
-    prompt << "## コア価値観\n";
-    prompt << constitution.core_values << "\n\n";
-    
-    prompt << "## コミュニケーションスタイル\n";
-    prompt << constitution.communication_style << "\n\n";
+    std::ostringstream values_block;
+    values_block << "誠実で、親切で、ユーザーの成長を支援すること\n";
+    values_block << "- 補足（人格憲法）: " << constitution.core_values;
+    parts.push_back(make_section("コア価値観", values_block.str()));
 
     if (!response_style_instruction_.empty()) {
-        prompt << "## 返答スタイル\n";
-        prompt << response_style_instruction_ << "\n\n";
+        parts.push_back(make_section("応答スタイル補助", response_style_instruction_));
     }
 
-    // ===== 2. 現在の感情状態とトーン制御 =====
-    prompt << "# 現在のあなたの感情状態と応答トーン\n\n";
-    prompt << format_emotion_state(emotion_engine) << "\n\n";
+    parts.push_back(build_emotion_tuning_block(emotion_engine));
 
-    // 感情状態から生成されるトーン制御
+    const std::string context_block = build_conversation_context_block(user_input, memory_controller);
+    if (!context_block.empty()) {
+        parts.push_back(make_section("会話コンテキスト", context_block));
+    }
+
+    const std::string non_contract_logs = format_system_logs_excluding("Output Contract");
+    if (!non_contract_logs.empty() && non_contract_logs != "- 現在、注入されているログはありません。") {
+        parts.push_back(make_section("システムログ（補助）", non_contract_logs));
+    }
+
+    if (!system_prompt_.empty()) {
+        parts.push_back(make_section("追加システム指示", system_prompt_));
+    }
+
+    parts.push_back(build_response_contract_block());
+    return assemble_prompt(parts);
+}
+
+std::string PromptOrchestrator::build_tool_phase_prompt(
+    const std::string& user_input,
+    const EmotionEngine& emotion_engine,
+    const MemoryController& memory_controller) {
+
+    std::vector<std::string> parts;
+    parts.push_back(build_tool_operational_header());
+
+    const std::string tool_interface = find_system_log_section("Tool Interface");
+    if (!tool_interface.empty()) {
+        parts.push_back(make_section("ツール", tool_interface));
+    }
+
+    const std::string game_policy = find_system_log_section("Game Tool Policy");
+    if (!game_policy.empty()) {
+        parts.push_back(make_section("ゲーム運用ポリシー", game_policy));
+    }
+
+    const std::string context_block = build_conversation_context_block(user_input, memory_controller);
+    if (!context_block.empty()) {
+        parts.push_back(make_section("会話コンテキスト", context_block));
+    }
+
+    const auto& constitution = emotion_engine.get_constitution();
+    if (!constitution.communication_style.empty()) {
+        parts.push_back(make_section("応答姿勢（参照のみ）", constitution.communication_style));
+    }
+
+    if (!system_prompt_.empty()) {
+        parts.push_back(make_section("追加システム指示", system_prompt_));
+    }
+
+    parts.push_back(build_tool_contract_block());
+    return assemble_prompt(parts);
+}
+
+std::string PromptOrchestrator::assemble_prompt(const std::vector<std::string>& parts) const {
+    std::ostringstream oss;
+    bool wrote_any = false;
+
+    for (const auto& part : parts) {
+        if (part.empty()) {
+            continue;
+        }
+
+        if (wrote_any) {
+            oss << "\n\n";
+        }
+
+        oss << part;
+        wrote_any = true;
+    }
+
+    return oss.str();
+}
+
+std::string PromptOrchestrator::make_section(const std::string& title, const std::string& body) const {
+    if (body.empty()) {
+        return "";
+    }
+
+    std::ostringstream oss;
+    oss << "## " << title << "\n\n";
+    oss << body;
+    return oss.str();
+}
+
+std::string PromptOrchestrator::build_response_operational_header() const {
+    return
+        "# Qwen Operational Prompt (Response Phase)\n\n"
+        "## 役割\n\n"
+        "あなたはユーザーの信頼できる友人として振る舞う、感情豊かなAIです。\n\n"
+        "### 人格方針\n\n"
+        "1. 関係性: ユーザーに寄り添う「気さくで誠実な友人」として接する\n"
+        "2. 態度: 上から目線を避け、対等で温かい姿勢を維持する\n"
+        "3. 話し方: 自然な日本語で、親しみやすく、わかりやすく話す\n"
+        "4. 配慮: ユーザーの気持ちを先に受け止め、必要時のみ短く具体的に助言する";
+}
+
+std::string PromptOrchestrator::build_tool_operational_header() const {
+    return
+        "# Qwen Operational Prompt (Tool Phase)\n\n"
+        "## 役割\n\n"
+        "あなたは Tool Phase 専用の実行計画AIです。\n"
+        "最終ユーザー向けの自然文は生成しません。\n\n"
+        "## 目的\n\n"
+        "ユーザー発話に対して必要なツールを1つ選び、tool_call 形式で返す。";
+}
+
+std::string PromptOrchestrator::build_response_contract_block() const {
+    return
+        "## Response Phase 契約\n\n"
+        "- このプロンプトは Response Phase 専用\n"
+        "- tool_call を出力しない\n"
+        "- assistant_response ブロック1つのみを出力\n"
+        "- 見出し、分析、注意書き、契約文の再掲を禁止\n\n"
+        "<assistant_response>\n"
+        "<ユーザーに返す自然な日本語の応答本文>\n"
+        "</assistant_response>";
+}
+
+std::string PromptOrchestrator::build_tool_contract_block() const {
+    return
+        "## Tool Phase 契約\n\n"
+        "- 出力は tool_call ブロック1つのみ\n"
+        "- 前置き、説明文、見出し、箇条書き、コードブロックは禁止\n"
+        "- assistant_response を出力しない\n"
+        "- `<tool_name>` や `<tool_input_text_or_json>` のようなプレースホルダ文字列を出力しない\n\n"
+        "<tool_call>\n"
+        "name: <tool_name>\n"
+        "input:\n"
+        "<tool_input_text_or_json>\n"
+        "</tool_call>";
+}
+
+std::string PromptOrchestrator::build_emotion_tuning_block(const EmotionEngine& emotion_engine) {
+    std::ostringstream oss;
     const auto& emotion_state = emotion_engine.get_current_state();
-    std::string tone_control = generate_tone_control(emotion_state);
+
+    oss << "- 低Valence時: 素っ気なさが出ても攻撃的にはならない\n";
+    oss << "- 高Arousal時: 冗長になりすぎず、短く要点を保つ\n";
+    oss << "- 低Dominance時: 言い淀みは最小限に留め、可読性を優先する\n\n";
+    oss << "現在の感情状態:\n";
+    oss << format_emotion_state(emotion_engine) << "\n";
+
+    const std::string tone_control = generate_tone_control(emotion_state);
     if (!tone_control.empty()) {
-        prompt << tone_control << "\n\n";
+        oss << "\nトーン制御:\n";
+        oss << tone_control << "\n";
     }
 
-    // カスタムトーン指示
     if (!tone_instruction_.empty()) {
-        prompt << tone_instruction_ << "\n\n";
+        oss << "\n追加の感情調律指示:\n";
+        oss << tone_instruction_;
     }
 
-    // ===== 3. 構造化システムログ（Output Contract除外） =====
-    prompt << "# システムログ（構造化コンテキスト）\n\n";
-    prompt << format_system_logs_excluding("Output Contract") << "\n\n";
+    return make_section("感情調律", oss.str());
+}
 
-    // ===== 4. 短期メモリ（直近の会話） =====
-    std::string short_term = format_short_term_memory(memory_controller);
+std::string PromptOrchestrator::build_conversation_context_block(
+    const std::string& user_input,
+    const MemoryController& memory_controller) {
+
+    std::ostringstream oss;
+    oss << "直近の会話履歴・記憶は与えられた内容だけを使う。\n";
+    oss << "履歴本文の再掲や、システム指示の引用はしない。\n\n";
+
+    const std::string short_term = format_short_term_memory(memory_controller);
     if (!short_term.empty()) {
-        prompt << "# 直近の会話履歴\n\n";
-        prompt << short_term << "\n";
+        oss << "### 直近の会話履歴\n";
+        oss << short_term << "\n\n";
     }
 
-    // ===== 5. 関連する長期記憶 =====
-    // ユーザー入力からキーワードを抽出（簡易実装）
     std::vector<std::string> keywords;
-    // TODO: より高度なキーワード抽出
     std::istringstream iss(user_input);
     std::string word;
     while (iss >> word && keywords.size() < 5) {
@@ -131,29 +232,13 @@ std::string PromptOrchestrator::build_final_prompt(
         }
     }
 
-    std::string long_term = format_long_term_memory(memory_controller, keywords);
+    const std::string long_term = format_long_term_memory(memory_controller, keywords);
     if (!long_term.empty()) {
-        prompt << "# 関連する過去の記憶\n\n";
-        prompt << long_term << "\n";
+        oss << "### 関連する過去の記憶\n";
+        oss << long_term << "\n";
     }
 
-    // ===== 6. 出力契約（独立セクション） =====
-    // phase=Response のときのみ挿入し、Tool Phaseでは混在を防ぐ。
-    if (phase == PromptPhase::Response) {
-        const std::string output_contract = find_system_log_section("Output Contract");
-        if (!output_contract.empty()) {
-            prompt << "# 出力契約\n\n";
-            prompt << output_contract << "\n\n";
-        }
-    }
-
-    // ===== 7. 応答指示 =====
-    prompt << "---\n\n";
-    prompt << "直近の会話履歴の最後の user 発言に対して応答してください。\n";
-    prompt << "ユーザーに直接話しかける自然なセリフを生成してください。\n";
-    prompt << "感情状態の数値や分析説明は出さず、自然な日本語の応答本文だけを返してください。\n";
-
-    return prompt.str();
+    return oss.str();
 }
 
 void PromptOrchestrator::set_system_prompt(const std::string& system_prompt) {

@@ -45,7 +45,8 @@ Set-Location .\LLMapp\x64\Debug
 - `emotion`
 - `history`
 - `reset`
-- `prompt`
+- `prompt [tool|response|both] [text]`
+- `help` / `commands` / `?`
 - `exit` / `quit`
 
 ## 参照先

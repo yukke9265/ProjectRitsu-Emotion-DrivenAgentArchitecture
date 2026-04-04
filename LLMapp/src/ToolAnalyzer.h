@@ -75,6 +75,12 @@ private:
     LLMInference* llm_inference_;
     bool debug_mode_;
 
+    AnalyzedToolSet analyze_with_history_deque(
+        const std::string& user_input,
+        const std::vector<ToolSpec>& available_tools,
+        const std::deque<ConversationTurn>* conversation_history
+    );
+
     // LLMで必要ツールを判定するプロンプト生成
     std::string build_tool_analysis_prompt(
         const std::string& user_input,

@@ -158,4 +158,43 @@ private:
      * @return トーン制御の指示文
      */
     std::string generate_tone_control(const EmotionState& emotion_state);
+
+    /**
+     * @brief 用途別（Response/Tool）の最終プロンプトを組み立て
+     */
+    std::string build_response_phase_prompt(
+        const std::string& user_input,
+        const EmotionEngine& emotion_engine,
+        const MemoryController& memory_controller);
+
+    std::string build_tool_phase_prompt(
+        const std::string& user_input,
+        const EmotionEngine& emotion_engine,
+        const MemoryController& memory_controller);
+
+    /**
+     * @brief プロンプト部品（セクション）を結合して最終文字列へ変換
+     */
+    std::string assemble_prompt(const std::vector<std::string>& parts) const;
+
+    /**
+     * @brief Markdownセクションを生成
+     */
+    std::string make_section(const std::string& title, const std::string& body) const;
+
+    /**
+     * @brief 運用プロンプトの固定部品を生成
+     */
+    std::string build_response_operational_header() const;
+    std::string build_tool_operational_header() const;
+    std::string build_response_contract_block() const;
+    std::string build_tool_contract_block() const;
+
+    /**
+     * @brief 共有の動的コンテキスト部品を生成
+     */
+    std::string build_emotion_tuning_block(const EmotionEngine& emotion_engine);
+    std::string build_conversation_context_block(
+        const std::string& user_input,
+        const MemoryController& memory_controller);
 };

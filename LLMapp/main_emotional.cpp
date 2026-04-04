@@ -40,6 +40,10 @@ std::string to_lower_copy(std::string text) {
 std::string normalize_command_token(const std::string& input) {
     std::string token = trim_copy(input);
 
+    if (!token.empty() && token.front() == '/') {
+        token.erase(0, 1);
+    }
+
     if (token.size() >= 2) {
         const char front = token.front();
         const char back = token.back();
@@ -66,18 +70,41 @@ std::string normalize_command_token(const std::string& input) {
 
     if (token == "exit" || token == "quit" || token == "debug" ||
         token == "emotion" || token == "history" || token == "reset" ||
-        token == "prompt") {
+        token == "prompt" || token == "help" || token == "commands" || token == "?") {
         return token;
+    }
+
+    if (token == "終了" || token == "ヘルプ" || token == "感情" ||
+        token == "履歴" || token == "リセット" || token == "プロンプト") {
+        if (token == "終了") return "exit";
+        if (token == "ヘルプ") return "help";
+        if (token == "感情") return "emotion";
+        if (token == "履歴") return "history";
+        if (token == "リセット") return "reset";
+        if (token == "プロンプト") return "prompt";
     }
 
     const std::string alpha_only = to_alpha_only(token);
     if (alpha_only == "exit" || alpha_only == "quit" || alpha_only == "debug" ||
         alpha_only == "emotion" || alpha_only == "history" || alpha_only == "reset" ||
-        alpha_only == "prompt") {
+        alpha_only == "prompt" || alpha_only == "help" || alpha_only == "commands") {
         return alpha_only;
     }
 
     return token;
+}
+
+void print_interactive_command_help() {
+    std::cout << "対話中コマンド:\n";
+    std::cout << "  help | commands | ?           - このヘルプを表示\n";
+    std::cout << "  debug                         - デバッグ情報表示\n";
+    std::cout << "  emotion                       - 現在の感情状態を表示\n";
+    std::cout << "  history                       - 会話履歴を表示\n";
+    std::cout << "  reset                         - 状態をリセット\n";
+    std::cout << "  prompt [tool|response|both] [text]\n";
+    std::cout << "                                - プロンプトプレビュー（状態更新なし）\n";
+    std::cout << "  quit | exit                   - 対話を終了\n";
+    std::cout << "\nショート形式: /help, /prompt tool, /prompt response, /prompt both\n";
 }
 
 bool read_text_file(const std::string& file_path, std::string& out_content, std::string& out_error) {
@@ -759,8 +786,8 @@ int main(int argc, char** argv) {
             std::cout << "  LLMapp.exe --once-system-prompt-tool-phase <file> [user_input] - Tool Phaseのみ1回実行して終了\n";
             std::cout << "  LLMapp.exe --once-system-prompt-response-phase <file> [user_input] - Response Phaseのみ1回実行して終了\n";
             std::cout << "  LLMapp.exe --help           - このヘルプを表示\n";
-            std::cout << "\n対話中コマンド:\n";
-            std::cout << "  debug / emotion / history / reset / prompt [tool|response]\n";
+            std::cout << "\n";
+            print_interactive_command_help();
             return 0;
         }
     }
@@ -1000,6 +1027,7 @@ int main(int argc, char** argv) {
         const std::string normalized_input = trim_copy(user_input);
         const std::string lowered_input = to_lower_copy(normalized_input);
         const std::string command_input = normalize_command_token(user_input);
+        const bool is_slash_command = !normalized_input.empty() && normalized_input.front() == '/';
 
         // 空入力のスキップ
         if (normalized_input.empty()) {
@@ -1010,6 +1038,14 @@ int main(int argc, char** argv) {
         if (command_input == "quit" || command_input == "exit") {
             std::cout << "\n対話を終了します。ありがとうございました！\n";
             break;
+        }
+
+        // ヘルプコマンド
+        if (command_input == "help" || command_input == "commands" || command_input == "?") {
+            std::cout << "\n";
+            print_interactive_command_help();
+            std::cout << "\n";
+            continue;
         }
 
         // デバッグコマンド
@@ -1039,31 +1075,84 @@ int main(int argc, char** argv) {
 
         // プロンプト確認コマンド（状態更新なし）
         // 使い方:
-        //   prompt            -> Response Phase
-        //   prompt response   -> Response Phase
-        //   prompt tool       -> Tool Phase
-        if (lowered_input == "prompt" || lowered_input.rfind("prompt ", 0) == 0) {
-            PromptOrchestrator::PromptPhase preview_phase = PromptOrchestrator::PromptPhase::Response;
-
-            if (lowered_input == "prompt tool") {
-                preview_phase = PromptOrchestrator::PromptPhase::Tool;
-            } else if (lowered_input == "prompt" || lowered_input == "prompt response") {
-                preview_phase = PromptOrchestrator::PromptPhase::Response;
-            } else {
-                std::cout << "使い方: prompt [tool|response]\n\n";
-                continue;
+        //   prompt
+        //   prompt response [text]
+        //   prompt tool [text]
+        //   prompt both [text]
+        //   /prompt tool [text]
+        {
+            std::string prompt_cmd = normalized_input;
+            if (is_slash_command && !prompt_cmd.empty()) {
+                prompt_cmd.erase(0, 1);
+                prompt_cmd = trim_copy(prompt_cmd);
             }
 
-            const char* phase_name =
-                (preview_phase == PromptOrchestrator::PromptPhase::Tool)
-                ? "Tool Phase"
-                : "Response Phase";
+            const std::string lowered_prompt_cmd = to_lower_copy(prompt_cmd);
+            if (lowered_prompt_cmd == "prompt" || lowered_prompt_cmd.rfind("prompt ", 0) == 0) {
+                std::istringstream iss(prompt_cmd);
+                std::vector<std::string> tokens;
+                std::string token;
+                while (iss >> token) {
+                    tokens.push_back(token);
+                }
 
-            std::cout << "システムプロンプト（状態更新なし / " << phase_name << "）:\n";
-            std::cout << "------------------------------------------------------------\n";
-            std::cout << agent.build_prompt_preview("", preview_phase) << "\n";
-            std::cout << "------------------------------------------------------------\n\n";
-            continue;
+                bool preview_both = false;
+                PromptOrchestrator::PromptPhase preview_phase = PromptOrchestrator::PromptPhase::Response;
+                size_t text_start_index = 1;
+
+                if (tokens.size() >= 2) {
+                    const std::string arg = to_lower_copy(tokens[1]);
+                    if (arg == "tool") {
+                        preview_phase = PromptOrchestrator::PromptPhase::Tool;
+                        text_start_index = 2;
+                    } else if (arg == "response") {
+                        preview_phase = PromptOrchestrator::PromptPhase::Response;
+                        text_start_index = 2;
+                    } else if (arg == "both" || arg == "all") {
+                        preview_both = true;
+                        text_start_index = 2;
+                    } else {
+                        preview_phase = PromptOrchestrator::PromptPhase::Response;
+                        text_start_index = 1;
+                    }
+                }
+
+                std::string preview_user_input;
+                if (tokens.size() > text_start_index) {
+                    std::ostringstream text_oss;
+                    for (size_t i = text_start_index; i < tokens.size(); ++i) {
+                        if (i > text_start_index) {
+                            text_oss << " ";
+                        }
+                        text_oss << tokens[i];
+                    }
+                    preview_user_input = text_oss.str();
+                }
+
+                auto print_preview = [&](PromptOrchestrator::PromptPhase phase) {
+                    const char* phase_name =
+                        (phase == PromptOrchestrator::PromptPhase::Tool)
+                        ? "Tool Phase"
+                        : "Response Phase";
+
+                    std::cout << "システムプロンプト（状態更新なし / " << phase_name << "）:\n";
+                    if (!preview_user_input.empty()) {
+                        std::cout << "[preview input] " << preview_user_input << "\n";
+                    }
+                    std::cout << "------------------------------------------------------------\n";
+                    std::cout << agent.build_prompt_preview(preview_user_input, phase) << "\n";
+                    std::cout << "------------------------------------------------------------\n\n";
+                };
+
+                if (preview_both) {
+                    print_preview(PromptOrchestrator::PromptPhase::Tool);
+                    print_preview(PromptOrchestrator::PromptPhase::Response);
+                } else {
+                    print_preview(preview_phase);
+                }
+
+                continue;
+            }
         }
 
         // エージェントで処理

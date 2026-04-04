@@ -148,6 +148,7 @@
     <ClCompile Include="..\external\llama.cpp\common\common.cpp" />
     <ClCompile Include="..\external\llama.cpp\common\log.cpp" />
     <ClCompile Include="..\external\llama.cpp\common\sampling.cpp" />
+    <ClCompile Include="..\external\llama.cpp\common\unicode.cpp" />
     <ClCompile Include="main.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>

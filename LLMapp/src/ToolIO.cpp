@@ -689,25 +689,15 @@ std::string ToolIOProtocol::build_tool_guide(const std::vector<ToolSpec>& tools)
         return oss.str();
     }
 
-    oss << "あなたは必要なときにツールを呼び出してよいです。\n";
-    oss << "ツール呼び出し時は、必ず tool_call のみを出力してください（他の文章は禁止）:\n\n";
-    oss << "<tool_call>\n";
-    oss << "name: <tool_name>\n";
-    oss << "input:\n";
-    oss << "<tool_input_text_or_json>\n";
-    oss << "</tool_call>\n";
-    oss << "\n";
-    oss << "利用可能ツール一覧:\n";
+    oss << "必要に応じてツールを呼び出してください。\n";
+    oss << "使い方の詳細は help ツールを呼び出して確認してください。\n\n";
+    oss << "利用可能ツール一覧（name / description）:\n";
 
     for (const auto& tool : tools) {
-        oss << "- name: " << tool.name << "\n";
-        oss << "  description: " << tool.description << "\n";
-        if (!tool.input_schema.empty()) {
-            oss << "  input_schema: " << tool.input_schema << "\n";
-        }
+        oss << "- " << tool.name << ": " << tool.description << "\n";
     }
 
-    oss << "\nツール実行結果が返ってきたら、その内容を根拠に最終応答を生成してください。";
+    oss << "\n例: help に {\"tool\":\"sum_numbers\"} を渡すと使い方を取得できます。\n";
     return oss.str();
 }
 

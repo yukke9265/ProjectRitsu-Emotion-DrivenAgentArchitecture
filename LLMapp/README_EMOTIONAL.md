@@ -8,7 +8,7 @@
 - `src/EmotionalAgent.cpp`: 1ターン処理の主制御（Tool Phase / Response Phase）
 - `src/ToolIO.h`, `src/ToolIO.cpp`: ツール呼び出し・応答のパース規約
 - `src/ToolSetup.cpp`: 標準ツールの登録
-- `src/PromptOrchestrator.cpp`: 最終プロンプト組み立て
+- `src/PromptOrchestrator.cpp`: 用途別（Tool/Response）プロンプトの部品生成と最終組み立て
 - `src/Config.h`: モデル・プリセット設定
 
 ## 実行コマンド
@@ -17,7 +17,8 @@
 - `emotion`
 - `history`
 - `reset`
-- `prompt`
+- `prompt [tool|response|both] [text]`
+- `help` / `commands` / `?`
 - `exit` / `quit`
 
 ## ビルドと実行

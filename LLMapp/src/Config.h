@@ -2,8 +2,8 @@
 
 // ===== LLMモデル設定 =====
 // ここを変更するだけで、全てのプログラムで使用するモデルが変わります
-#define DEFAULT_MODEL_PATH "D:\\0_OllamaModels\\WS\\models\\Qwen_Qwen3-4B-Instruct-2507-Q5_K_M.gguf"
-
+#define DEFAULT_MODEL_PATH "D:\\0_OllamaModels\\WS\\models\\Qwen3.5-9B-UD-Q4_K_XL.gguf"
+	
 // ===== LLMパラメータ設定 =====
 #define DEFAULT_GPU_LAYERS 99        // ↑ 速くなるがVRAM消費増 / ↓ 遅くなるがVRAM節約
 #define DEFAULT_CONTEXT_SIZE 8192    // ↑ 長文文脈に強いがメモリ・遅延増 / ↓ 軽いが履歴保持が短くなる

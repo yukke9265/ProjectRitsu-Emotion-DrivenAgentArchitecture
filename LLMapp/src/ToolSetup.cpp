@@ -8,6 +8,7 @@
 #include <optional>
 #include <random>
 #include <sstream>
+#include <vector>
 
 namespace {
 
@@ -102,6 +103,28 @@ std::string build_game_status_json(const NumberGuessGameState& state, const std:
     return oss.str();
 }
 
+const std::vector<std::pair<std::string, std::string>>& get_tool_usage_help_entries() {
+    static const std::vector<std::pair<std::string, std::string>> kUsageEntries = {
+        { "help", "使い方: {\"tool\":\"<tool_name>\"} を渡す。tool省略時は全ツールの要約を返す。" },
+        { "finish_tool_planning", "使い方: {} を渡してツールフェーズを終了する。" },
+        { "get_current_time", "使い方: {} を渡して現在時刻を取得する。" },
+        { "echo", "使い方: 任意文字列を input に渡す（例: こんにちは）。" },
+        { "sum_numbers", "使い方: {\"a\":10,\"b\":20} を渡して合計を取得する。" },
+        { "number_guess_game", "使い方: {\"action\":\"start|guess|status|reset\", ...} を渡す。guess時は guess 数値が必要。" },
+    };
+    return kUsageEntries;
+}
+
+const std::string* find_tool_usage_help(const std::string& tool_name) {
+    const auto& entries = get_tool_usage_help_entries();
+    for (const auto& entry : entries) {
+        if (entry.first == tool_name) {
+            return &entry.second;
+        }
+    }
+    return nullptr;
+}
+
 }
 
 void register_default_tools(EmotionalAgent& agent) {
@@ -109,6 +132,65 @@ void register_default_tools(EmotionalAgent& agent) {
     // 入力は文字列（JSON可）として受け取り、出力/エラーを返す。
 
     // ツール計画終了ツール（ツール不要時や計画完了時に呼び出す）
+    agent.register_tool(
+        { "help", "ツールごとの使い方を表示します", "{\"tool\":\"ツール名\"}（省略可）" },
+        ToolObjectSchema{
+            {
+                ToolFieldSchema{ "tool", ToolJsonType::STRING, false },
+            },
+            false
+        },
+        [](const std::string& input) {
+            ToolResult result;
+
+            ToolJsonInput json;
+            if (!json.parse(input)) {
+                result.success = false;
+                result.error = "invalid_json: " + json.error_message();
+                return result;
+            }
+
+            const ToolJsonValue::Object* obj = json.root().as_object();
+            if (!obj) {
+                result.success = false;
+                result.error = "input_must_be_json_object";
+                return result;
+            }
+
+            const auto& usage_entries = get_tool_usage_help_entries();
+            const auto tool_it = obj->find("tool");
+
+            std::ostringstream oss;
+            if (tool_it == obj->end()) {
+                oss << "利用可能な使い方一覧:\n";
+                for (const auto& entry : usage_entries) {
+                    oss << "- " << entry.first << ": " << entry.second << "\n";
+                }
+                result.success = true;
+                result.output = oss.str();
+                return result;
+            }
+
+            const auto tool_name = tool_it->second.as_string();
+            if (!tool_name) {
+                result.success = false;
+                result.error = "field_must_be_string: tool";
+                return result;
+            }
+
+            const std::string* usage = find_tool_usage_help(*tool_name);
+            if (!usage) {
+                result.success = false;
+                result.error = "unknown_tool_for_help: " + *tool_name;
+                return result;
+            }
+
+            result.success = true;
+            result.output = *tool_name + ": " + *usage;
+            return result;
+        }
+    );
+
     agent.register_tool(
         { "finish_tool_planning", 
           "ツールの呼び出しが不要、または全てのツール実行が完了した場合に呼び出します。このツールを呼び出すとツール実行フェーズが終了し、ユーザーへの応答生成フェーズに移行します。", 

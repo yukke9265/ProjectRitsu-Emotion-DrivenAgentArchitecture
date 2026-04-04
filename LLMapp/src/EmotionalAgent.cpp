@@ -262,11 +262,6 @@ std::string EmotionalAgent::process(const std::string& user_input) {
             }
         }
 
-        add_system_log_section(
-            "Output Contract",
-            ToolIOProtocol::build_assistant_contract_guide()
-        );
-
         if (debug_mode_) {
             std::cout << "\n" << std::string(60, '=') << "\n";
             std::cout << "  デバッグモード: 処理開始\n";
@@ -443,23 +438,20 @@ std::string EmotionalAgent::process(const std::string& user_input) {
         // needed_tools パラメータで、フィルタリング済みのツール情報を受け取る
         auto build_tool_phase_prompt = [&](bool strict_retry_mode, const std::vector<ToolSpec>* needed_tools = nullptr) {
             std::string phase_prompt = tool_base_prompt;
-            phase_prompt += "\n\n# Tool Phase（ツール計画・呼び出し専用）\n\n";
             
             // ツール情報を挿入（フィルタリング済みの場合のみ）
             if (needed_tools && !needed_tools->empty()) {
-                phase_prompt += "【利用可能なツール（このターンで必要と判定）】\n";
+                phase_prompt += "\n\n## このターンで必要と判定されたツール候補\n\n";
                 for (const auto& tool : *needed_tools) {
                     phase_prompt += "\n- " + tool.name + ": " + tool.description + "\n";
+                    if (!tool.input_schema.empty()) {
+                        phase_prompt += "  使い方: " + tool.input_schema + "\n";
+                    } else {
+                        phase_prompt += "  使い方: help を tool_call して {\"tool\":\"" + tool.name + "\"} を確認\n";
+                    }
                 }
                 phase_prompt += "\n";
             }
-            
-            phase_prompt += ToolIOProtocol::build_tool_call_contract_guide();
-            phase_prompt += "\n\n";
-            phase_prompt +=
-                "このフェーズでは必ず ツール呼び出し を実行してください。"
-                "ツール実行が不要または完了した場合は finish_tool_planning を呼び出してください。\n"
-                "Markdownコードブロック（```）で囲まないでください。\n";
 
             if (!tool_feedback_blocks.empty()) {
                 phase_prompt += "\n# ツール実行ログ\n\n";
@@ -479,17 +471,12 @@ std::string EmotionalAgent::process(const std::string& user_input) {
         // Response Phase: 最終応答専用（tool_call は禁止）
         auto build_response_phase_prompt = [&](bool strict_retry_mode) {
             std::string phase_prompt = response_base_prompt;
-            phase_prompt += "\n\n# Response Phase（最終応答専用）\n\n";
-            phase_prompt += ToolIOProtocol::build_assistant_contract_guide();
-            phase_prompt += "\n\n";
 
             if (!tool_feedback_blocks.empty()) {
                 phase_prompt += "# ツール実行ログ\n\n";
                 phase_prompt += tool_feedback_blocks;
                 phase_prompt += "\n\n";
             }
-
-            phase_prompt += "このフェーズでは tool_call を出力しないでください。\n";
 
             if (strict_retry_mode) {
                 phase_prompt +=
@@ -1051,11 +1038,6 @@ std::string EmotionalAgent::build_prompt_preview(
                 }
             }
         }
-
-        add_system_log_section(
-            "Output Contract",
-            ToolIOProtocol::build_assistant_contract_guide()
-        );
 
         std::string preview_prompt = prompt_orchestrator_->build_final_prompt(
             user_input,
